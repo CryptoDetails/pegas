@@ -4,12 +4,12 @@ const proof = [
   {
     label: "Open model",
     value: siteConfig.modelName,
-    note: siteConfig.previewMode ? "target model" : "running now",
+    note: "configured model",
   },
   {
     label: "Cloud compute",
     value: siteConfig.computeName,
-    note: siteConfig.previewMode ? "connection pending" : "rented instance",
+    note: "RunPod infrastructure",
   },
   {
     label: "Hosted LLM API",

@@ -11,14 +11,49 @@ import { InferencePath } from "./InferencePath";
 import { MessageInput } from "./MessageInput";
 import { ProofStrip } from "./ProofStrip";
 import { ResultCard } from "./ResultCard";
-import { createPreviewResult, getPreviewError, PREVIEW_DELAY_MS } from "@/lib/demo";
-import { siteConfig } from "@/lib/site";
 import type { TriageResult, UiError } from "@/lib/types";
 
 const defaultMessage =
   "Hi, we are building a wallet and would like to integrate your swap API. Could your team share technical requirements and documentation?";
 
+const internalError: UiError = {
+  code: "INTERNAL_ERROR",
+  title: "Something went wrong",
+  message: "Pegas could not complete the request. Infrastructure details remain hidden from the browser.",
+};
+
 type ViewState = "ready" | "loading" | "success" | "error";
+
+function isUiErrorResponse(value: unknown): value is { error: UiError } {
+  if (typeof value !== "object" || value === null || !("error" in value)) return false;
+  const error = value.error;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    "title" in error &&
+    "message" in error &&
+    typeof error.code === "string" &&
+    typeof error.title === "string" &&
+    typeof error.message === "string"
+  );
+}
+
+function isTriageResult(value: unknown): value is TriageResult {
+  if (typeof value !== "object" || value === null) return false;
+  const result = value as Partial<TriageResult>;
+  return (
+    typeof result.category === "string" &&
+    typeof result.priority === "string" &&
+    typeof result.summary === "string" &&
+    typeof result.nextAction === "string" &&
+    typeof result.model === "string" &&
+    typeof result.compute === "string" &&
+    typeof result.runtime === "string" &&
+    typeof result.latencyMs === "number" &&
+    result.schemaValid === true
+  );
+}
 
 export function TriageWorkspace() {
   const [message, setMessage] = useState(defaultMessage);
@@ -45,27 +80,52 @@ export function TriageWorkspace() {
     if (validationError && value.trim()) setValidationError(null);
   }
 
-  function handleAnalyze() {
+  async function handleAnalyze() {
     if (!message.trim()) {
       setValidationError("Enter a message to run through the model.");
       return;
     }
 
     setValidationError(null);
+    setResult(null);
     setError(null);
     setLoadingStep(0);
     setViewState("loading");
 
-    window.setTimeout(() => {
-      if (siteConfig.previewMode) {
-        setResult(createPreviewResult(message));
-        setViewState("success");
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message.trim() }),
+      });
+
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        setError(internalError);
+        setViewState("error");
         return;
       }
 
-      setError(getPreviewError("MODEL_OFFLINE"));
+      if (!response.ok) {
+        setError(isUiErrorResponse(payload) ? payload.error : internalError);
+        setViewState("error");
+        return;
+      }
+
+      if (!isTriageResult(payload)) {
+        setError(internalError);
+        setViewState("error");
+        return;
+      }
+
+      setResult(payload);
+      setViewState("success");
+    } catch {
+      setError(internalError);
       setViewState("error");
-    }, PREVIEW_DELAY_MS);
+    }
   }
 
   return (
@@ -79,9 +139,6 @@ export function TriageWorkspace() {
               <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-blue-700">
                 Self-hosted open LLM / portfolio proof
               </span>
-              {siteConfig.previewMode ? (
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">Infrastructure connection pending</span>
-              ) : null}
             </div>
             <h1 className="max-w-4xl text-4xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-6xl">
               Your own open model. On your own cloud GPU.
@@ -112,7 +169,7 @@ export function TriageWorkspace() {
               validationError={validationError}
             />
 
-            {viewState === "loading" ? <InferencePath activeStep={loadingStep} preview={siteConfig.previewMode} /> : null}
+            {viewState === "loading" ? <InferencePath activeStep={loadingStep} /> : null}
             {viewState === "success" && result ? <ResultCard result={result} /> : null}
             {viewState === "error" && error ? <ErrorPanel error={error} /> : null}
           </div>
@@ -138,7 +195,7 @@ export function TriageWorkspace() {
       </main>
 
       <footer className="mx-auto max-w-7xl px-5 pb-8 text-xs leading-5 text-slate-400 sm:px-8">
-        Pegas documents the real infrastructure, measured results, actual costs, and known limitations. Preview values are clearly marked until the live proof run exists.
+        Pegas documents the real infrastructure, measured results, actual costs, and known limitations. Per-request proof metadata appears only after a successful live inference.
       </footer>
     </div>
   );

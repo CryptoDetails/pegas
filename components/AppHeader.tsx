@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { ModelStatus } from "./ModelStatus";
-import { siteConfig } from "@/lib/site";
 
 type AppHeaderProps = {
   active: "demo" | "benchmark" | "build";
@@ -43,13 +41,9 @@ export function AppHeader({ active }: AppHeaderProps) {
             ))}
           </nav>
           <div className="hidden lg:block">
-            {siteConfig.previewMode ? (
-              <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
-                Preview build
-              </span>
-            ) : (
-              <ModelStatus status="online" compact />
-            )}
+            <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
+              Live model integration
+            </span>
           </div>
         </div>
       </div>

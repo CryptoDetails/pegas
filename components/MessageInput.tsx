@@ -1,7 +1,5 @@
 "use client";
 
-import { siteConfig } from "@/lib/site";
-
 type Preset = {
   label: string;
   message: string;
@@ -83,9 +81,7 @@ export function MessageInput({ value, onChange, onAnalyze, loading, validationEr
 
       <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-5 text-slate-500">
-          {siteConfig.previewMode
-            ? "Preview build: the UI flow is local until the GPU smoke test is complete."
-            : "Your message is sent to the open model running on the configured cloud GPU."}
+          Pegas sends this request through its server-side route. If the GPU is stopped, you will see an offline state instead of a fake result.
         </p>
         <button
           type="button"
