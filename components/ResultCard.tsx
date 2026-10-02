@@ -113,14 +113,17 @@ export function ResultCard({ result }: { result: TriageResult }) {
             <h3 className="mt-1 text-lg font-semibold">Proof, not just output</h3>
           </div>
           {!result.isPreview ? (
-            <button
-              type="button"
-              onClick={verifyInference}
-              disabled={proofLoading}
-              className="focus-ring inline-flex w-fit rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
-            >
-              {proofLoading ? "Checking runtime..." : "Verify this inference"}
-            </button>
+            <div className="w-full sm:w-auto sm:text-right">
+              <button
+                type="button"
+                onClick={verifyInference}
+                disabled={proofLoading}
+                className="focus-ring inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-950/20 transition hover:bg-blue-500 disabled:cursor-wait disabled:opacity-60 sm:w-auto"
+              >
+                {proofLoading ? "Checking runtime..." : "Verify this inference"}
+              </button>
+              <p className="mt-1.5 text-[11px] font-medium text-blue-200">See live runtime evidence</p>
+            </div>
           ) : null}
         </div>
         <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">Per-request latency is measured. Compute is deployment configuration; the verification panel shows only runtime evidence the server can obtain.</p>

@@ -1,0 +1,54 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { AppHeader } from "@/components/AppHeader";
+
+export const metadata: Metadata = {
+  title: "Pegas Blog | Building a self-hosted open LLM",
+  description: "Field notes from building Pegas: running Qwen3 4B on a rented GPU, proving the runtime, and debugging storage, networking, and GPU selection.",
+};
+
+const articles = [
+  {
+    href: "/blog/open-source-llm-cloud-gpu",
+    label: "Article 1",
+    title: "How We Ran an Open-Source LLM on a Cloud GPU",
+    subtitle: "RunPod + Ollama + Qwen3 4B: a practical proof, not a benchmark",
+  },
+  {
+    href: "/blog/when-the-demo-worked-and-then-broke",
+    label: "Article 2",
+    title: "When the Demo Worked - and Then Everything Broke",
+    subtitle: "What persistent storage, cloud networking, and GPU detection taught us",
+  },
+];
+
+export default function BlogPage() {
+  return (
+    <div className="min-h-screen">
+      <AppHeader active="blog" />
+      <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
+        <section className="max-w-4xl">
+          <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-blue-700">Field notes · October 2026</span>
+          <h1 className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-6xl">How the proof was built.</h1>
+          <p className="mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
+            Two practical chapters from turning Pegas from a polished frontend into a real open-model demo, then learning what it takes to keep that demo working.
+          </p>
+        </section>
+
+        <section className="mt-10 grid gap-5 lg:grid-cols-2">
+          {articles.map((article) => (
+            <Link key={article.href} href={article.href} className="focus-ring group flex min-h-72 flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-lg sm:p-8">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">{article.label}</span>
+                <span className="text-xs text-slate-400">October 2026</span>
+              </div>
+              <h2 className="mt-7 text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">{article.title}</h2>
+              <p className="mt-4 text-sm leading-6 text-slate-600 sm:text-base">{article.subtitle}</p>
+              <span className="mt-auto pt-8 text-sm font-semibold text-blue-600 transition group-hover:text-blue-800">Read article →</span>
+            </Link>
+          ))}
+        </section>
+      </main>
+    </div>
+  );
+}

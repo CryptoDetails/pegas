@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 type AppHeaderProps = {
-  active: "demo" | "benchmark" | "build";
+  active: "demo" | "benchmark" | "build" | "blog";
 };
 
 export function AppHeader({ active }: AppHeaderProps) {
@@ -9,6 +9,7 @@ export function AppHeader({ active }: AppHeaderProps) {
     { href: "/", label: "Live proof", id: "demo" as const },
     { href: "/benchmark", label: "Benchmark", id: "benchmark" as const },
     { href: "/build", label: "Build guide", id: "build" as const },
+    { href: "/blog", label: "Blog", id: "blog" as const },
   ];
 
   return (
@@ -25,11 +26,11 @@ export function AppHeader({ active }: AppHeaderProps) {
         </Link>
 
         <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-4">
-          <nav className="flex w-full items-center rounded-xl border border-slate-200 bg-slate-50 p-1 text-sm sm:w-auto">
+          <nav className="flex w-full items-center overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1 text-sm sm:w-auto">
             {links.map((link) => (
               <Link
                 key={link.id}
-                className={`focus-ring flex-1 rounded-lg px-3 py-2 text-center transition sm:flex-none ${
+                className={`focus-ring flex-none rounded-lg px-3 py-2 text-center transition ${
                   active === link.id
                     ? "bg-white font-semibold text-slate-950 shadow-sm"
                     : "text-slate-500 hover:text-slate-900"
