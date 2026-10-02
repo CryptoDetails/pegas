@@ -11,20 +11,15 @@ const errors: Record<UiErrorCode, UiError> = {
     title: "Model offline",
     message: "The cloud GPU model is currently unavailable. This is expected when the paid GPU instance is stopped between demo sessions.",
   },
-  MODEL_TIMEOUT: {
-    code: "MODEL_TIMEOUT",
-    title: "Request timed out",
-    message: "The model took too long to respond. Please try again after the GPU endpoint is ready.",
+  MODEL_STARTING: {
+    code: "MODEL_STARTING",
+    title: "Model is starting",
+    message: "The GPU endpoint is reachable, but the model did not finish the request in time. Try again shortly.",
   },
-  INVALID_MODEL_OUTPUT: {
-    code: "INVALID_MODEL_OUTPUT",
-    title: "Invalid model response",
-    message: "The model returned data that did not pass the expected structured-output schema.",
-  },
-  INTERNAL_ERROR: {
-    code: "INTERNAL_ERROR",
-    title: "Something went wrong",
-    message: "Pegas could not complete the request. Infrastructure details remain hidden from the browser.",
+  MODEL_ERROR: {
+    code: "MODEL_ERROR",
+    title: "Model error",
+    message: "The model response could not be used safely. Please try again. Infrastructure details remain hidden from the browser.",
   },
 };
 
@@ -40,7 +35,7 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return errorResponse("INTERNAL_ERROR", 400);
+    return errorResponse("MODEL_ERROR", 400);
   }
 
   if (
@@ -50,7 +45,7 @@ export async function POST(request: Request) {
     typeof body.message !== "string" ||
     !body.message.trim()
   ) {
-    return errorResponse("INTERNAL_ERROR", 400);
+    return errorResponse("MODEL_ERROR", 400);
   }
 
   try {
@@ -72,9 +67,9 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof ModelAdapterError) {
-      const status = error.code === "MODEL_TIMEOUT" ? 504 : error.code === "MODEL_OFFLINE" ? 503 : 502;
+      const status = error.code === "MODEL_STARTING" ? 504 : error.code === "MODEL_OFFLINE" ? 503 : 502;
       return errorResponse(error.code, status);
     }
-    return errorResponse("INTERNAL_ERROR", 500);
+    return errorResponse("MODEL_ERROR", 500);
   }
 }

@@ -7,9 +7,9 @@ const proof = [
     note: "configured model",
   },
   {
-    label: "Cloud compute",
+    label: "Configured compute",
     value: siteConfig.computeName,
-    note: "RunPod infrastructure",
+    note: "deployment configuration",
   },
   {
     label: "Hosted LLM API",

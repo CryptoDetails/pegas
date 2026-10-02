@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { BenchmarkCase, Category } from "@/lib/types";
+import type { BenchmarkCase, BenchmarkRunResult, Category } from "@/lib/types";
 import { categoryOrder } from "@/lib/benchmark";
 
-export function BenchmarkTable({ cases }: { cases: BenchmarkCase[] }) {
+export function BenchmarkTable({ cases, results, running }: { cases: BenchmarkCase[]; results: Record<number, BenchmarkRunResult>; running: boolean }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Category | "all">("all");
 
@@ -52,36 +52,45 @@ export function BenchmarkTable({ cases }: { cases: BenchmarkCase[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-[900px] w-full border-collapse text-left text-sm">
+        <table className="min-w-[1050px] w-full border-collapse text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-[0.1em] text-slate-400">
             <tr>
               <th className="px-5 py-3 font-semibold">Message</th>
-              <th className="px-5 py-3 font-semibold">Expected</th>
-              <th className="px-5 py-3 font-semibold">Model</th>
+              <th className="px-5 py-3 font-semibold">Expected category</th>
+              <th className="px-5 py-3 font-semibold">Expected priority</th>
+              <th className="px-5 py-3 font-semibold">Model category</th>
+              <th className="px-5 py-3 font-semibold">Model priority</th>
               <th className="px-5 py-3 font-semibold">Status</th>
               <th className="px-5 py-3 font-semibold">Latency</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.map((item) => (
-              <tr key={item.id} className="align-top hover:bg-slate-50/70">
-                <td className="max-w-xl px-5 py-4 leading-6 text-slate-700">
-                  <span className="mr-2 text-xs font-semibold text-slate-400">#{item.id}</span>
-                  {item.message}
-                </td>
-                <td className="px-5 py-4">
-                  <div className="space-y-1">
-                    <span className="block font-semibold capitalize text-slate-800">{item.expectedCategory}</span>
-                    <span className="block text-xs capitalize text-slate-500">{item.expectedPriority} priority</span>
-                  </div>
-                </td>
-                <td className="px-5 py-4 text-slate-400">Pending</td>
-                <td className="px-5 py-4">
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500">Not run</span>
-                </td>
-                <td className="px-5 py-4 text-slate-400">-</td>
-              </tr>
-            ))}
+            {filtered.map((item) => {
+              const result = results[item.id];
+              const pass = result?.validOutput && result.category === item.expectedCategory && result.priority === item.expectedPriority;
+              return (
+                <tr key={item.id} className="align-top hover:bg-slate-50/70">
+                  <td className="max-w-xl px-5 py-4 leading-6 text-slate-700">
+                    <span className="mr-2 text-xs font-semibold text-slate-400">#{item.id}</span>
+                    {item.message}
+                  </td>
+                  <td className="px-5 py-4 font-semibold capitalize text-slate-800">{item.expectedCategory}</td>
+                  <td className="px-5 py-4 capitalize text-slate-600">{item.expectedPriority}</td>
+                  <td className="px-5 py-4 font-semibold capitalize text-slate-800">{result?.category ?? (running ? "Waiting" : "Pending")}</td>
+                  <td className="px-5 py-4 capitalize text-slate-600">{result?.priority ?? (running ? "Waiting" : "Pending")}</td>
+                  <td className="px-5 py-4">
+                    {!result ? (
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500">{running ? "Queued" : "Not run"}</span>
+                    ) : pass ? (
+                      <span className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">Pass</span>
+                    ) : (
+                      <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">Fail</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">{result ? `${result.latencyMs} ms` : "-"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

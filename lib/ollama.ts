@@ -1,6 +1,6 @@
 import "server-only";
 
-import { TRIAGE_SYSTEM_PROMPT } from "./prompt";
+import { TRIAGE_SYSTEM_PROMPT, wrapUntrustedBusinessMessage } from "./prompt";
 import { triageSchema, validateTriageOutput, type ValidatedTriage } from "./schema";
 import type { UiErrorCode } from "./types";
 
@@ -34,7 +34,7 @@ function readRequiredConfig() {
   const gpuLabel = process.env.GPU_LABEL?.trim();
 
   if (!baseUrl || !model || !gpuLabel) {
-    throw new ModelAdapterError("INTERNAL_ERROR");
+    throw new ModelAdapterError("MODEL_ERROR");
   }
 
   return {
@@ -66,15 +66,15 @@ export async function runOllamaTriage(message: string): Promise<OllamaResult> {
         options: { temperature: 0 },
         format: triageSchema,
         system: TRIAGE_SYSTEM_PROMPT,
-        prompt: message,
+        prompt: wrapUntrustedBusinessMessage(message),
       }),
       signal: controller.signal,
       cache: "no-store",
     });
   } catch (error) {
-    if (isAbortError(error)) throw new ModelAdapterError("MODEL_TIMEOUT");
+    if (isAbortError(error)) throw new ModelAdapterError("MODEL_STARTING");
     if (error instanceof TypeError) throw new ModelAdapterError("MODEL_OFFLINE");
-    throw new ModelAdapterError("INTERNAL_ERROR");
+    throw new ModelAdapterError("MODEL_ERROR");
   } finally {
     clearTimeout(timeout);
   }
@@ -82,32 +82,32 @@ export async function runOllamaTriage(message: string): Promise<OllamaResult> {
   const latencyMs = Math.max(0, Math.round(performance.now() - startedAt));
 
   if (!response.ok) {
-    if ([404, 408, 429, 502, 503, 504].includes(response.status)) {
-      throw new ModelAdapterError(response.status === 408 || response.status === 504 ? "MODEL_TIMEOUT" : "MODEL_OFFLINE");
+    if (response.status === 408 || response.status === 504) {
+      throw new ModelAdapterError("MODEL_STARTING");
     }
-    throw new ModelAdapterError("INTERNAL_ERROR");
+    throw new ModelAdapterError("MODEL_ERROR");
   }
 
   let envelope: OllamaEnvelope;
   try {
     envelope = (await response.json()) as OllamaEnvelope;
   } catch {
-    throw new ModelAdapterError("INVALID_MODEL_OUTPUT");
+    throw new ModelAdapterError("MODEL_ERROR");
   }
 
   if (typeof envelope.response !== "string") {
-    throw new ModelAdapterError("INVALID_MODEL_OUTPUT");
+    throw new ModelAdapterError("MODEL_ERROR");
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(envelope.response);
   } catch {
-    throw new ModelAdapterError("INVALID_MODEL_OUTPUT");
+    throw new ModelAdapterError("MODEL_ERROR");
   }
 
   const triage = validateTriageOutput(parsed);
-  if (!triage) throw new ModelAdapterError("INVALID_MODEL_OUTPUT");
+  if (!triage) throw new ModelAdapterError("MODEL_ERROR");
 
   return {
     ...triage,

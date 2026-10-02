@@ -2,34 +2,39 @@ import { AppHeader } from "@/components/AppHeader";
 
 const steps = [
   {
-    title: "Rent a GPU",
+    title: "Rent a cloud GPU",
     why: "Choose enough VRAM for the model without paying for capacity you do not need.",
-    do: "Create a RunPod Pod, record the actual GPU, region, hourly rate, and storage choice before deployment.",
+    do: "Create the GPU environment and record the actual deployment choices you can verify. Keep the public model endpoint in environment configuration, not source code.",
   },
   {
     title: "Run Ollama",
-    why: "Ollama gives the model a simple local HTTP inference server.",
-    do: "Install Ollama inside the GPU environment and verify the service before exposing anything externally.",
+    why: "Ollama gives the open model a simple HTTP inference server.",
+    do: "Install and start Ollama inside the GPU environment, then verify the service locally before connecting the web app.",
   },
   {
-    title: "Pull Qwen3 4B",
-    why: "A small open model is enough to prove the full pipeline without expensive hardware.",
-    do: "Download the exact model tag you will benchmark and record that tag for reproducibility.",
+    title: "Pull and run Qwen3 4B",
+    why: "A small open model is enough to prove the complete self-hosted inference path.",
+    do: "Pull the exact qwen3:4b model tag and keep that model name configurable for deployment.",
   },
   {
-    title: "Prove the API",
-    why: "A successful HTTP request isolates infrastructure from frontend problems.",
-    do: "Send one structured-output request, capture the response, latency, schema validity, and a screenshot of the proof run.",
+    title: "Force and verify CUDA",
+    why: "A GPU Pod does not help if the runtime silently selects the wrong backend.",
+    do: "On the clean working Pod, OLLAMA_LLM_LIBRARY=cuda_v13 was required to select CUDA. Verify inference with ollama ps; the working proof showed 100% GPU.",
   },
   {
-    title: "Connect the web app",
-    why: "The browser should never need the private model endpoint or credentials.",
-    do: "Route Browser → Next.js server route → RunPod/Ollama, keeping secrets server-side.",
+    title: "Prove the HTTP API",
+    why: "A successful API request separates model/runtime problems from frontend problems.",
+    do: "Send a structured-output request directly to Ollama and verify the returned data before adding another application layer.",
   },
   {
-    title: "Measure and publish",
-    why: "A good portfolio case needs evidence, not only a successful demo.",
-    do: "Run the fixed benchmark, record costs and failures, deploy on Vercel, and publish the exact lessons learned.",
+    title: "Connect Next.js server-side",
+    why: "The browser should never receive the private model endpoint or infrastructure secrets.",
+    do: "Route Browser → Next.js /api/analyze → RunPod Direct TCP → Ollama. MODEL_BASE_URL stays server-side and configurable.",
+  },
+  {
+    title: "Measure actual results",
+    why: "A reproducible portfolio case needs evidence, not a single successful screenshot.",
+    do: "Run the frozen benchmark, record real per-request behavior, inspect failures, and separate measured facts from deployment configuration.",
   },
 ];
 
@@ -40,9 +45,9 @@ export default function BuildPage() {
       <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
         <section className="max-w-4xl">
           <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-blue-700">Reproduce the experiment</span>
-          <h1 className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-6xl">From zero to your own cloud-hosted open LLM.</h1>
+          <h1 className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-6xl">Don&apos;t trust the demo. Reproduce it.</h1>
           <p className="mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
-            This page is the compact map. The full guide adds screenshots, exact commands, real costs, and every problem encountered during the live build.
+            Pegas is useful because the path can be repeated: rent compute, run an open model, prove the API, connect it server-side, and measure what actually happens.
           </p>
         </section>
 
@@ -74,21 +79,26 @@ export default function BuildPage() {
 
         <section className="mt-8 grid gap-4 lg:grid-cols-2">
           <div className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white sm:p-7">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-300">Critical trust boundary</p>
-            <h2 className="mt-2 text-2xl font-semibold">No hosted LLM API in the inference path.</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-300">Infrastructure is still hosted by Vercel and RunPod. The claim is narrower and verifiable: the prompt is not delegated to a hosted model provider such as OpenAI or Anthropic.</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-300">Current networking reality</p>
+            <h2 className="mt-2 text-2xl font-semibold">Working demo first, hardened networking later.</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">The current public RunPod path uses Direct TCP over HTTP. The external TCP port can change after a Pod restart, so MODEL_BASE_URL remains deployment configuration and is never hardcoded. This is not presented as a final TLS/auth setup.</p>
           </div>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Record these facts</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">What is actually verified</p>
             <ul className="mt-4 space-y-2 text-sm leading-6 text-slate-700">
-              <li>• exact GPU and hourly price</li>
-              <li>• exact model tag and runtime</li>
-              <li>• successful API proof and latency</li>
-              <li>• benchmark results and real misses</li>
-              <li>• gross and net experiment cost</li>
-              <li>• what failed and how it was fixed</li>
+              <li>• Qwen3 4B inference through Ollama</li>
+              <li>• CUDA-selected runtime on the clean Pod</li>
+              <li>• ollama ps showed 100% GPU during verification</li>
+              <li>• live structured inference through the public frontend</li>
+              <li>• server-side schema validation and sanitized error states</li>
+              <li>• no hosted third-party LLM API in the intended inference path</li>
             </ul>
           </div>
+        </section>
+
+        <section className="mt-4 rounded-3xl border border-amber-200 bg-amber-50 p-6 sm:p-7">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Storage note</p>
+          <p className="mt-2 text-sm leading-6 text-amber-950">Persistent/global storage was explored, but the clean working inference used normal local model storage on the running Pod. Treat persistent storage as an infrastructure experiment, not as proof of the current live model path.</p>
         </section>
       </main>
     </div>

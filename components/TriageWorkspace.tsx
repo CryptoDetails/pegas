@@ -17,9 +17,9 @@ const defaultMessage =
   "Hi, we are building a wallet and would like to integrate your swap API. Could your team share technical requirements and documentation?";
 
 const internalError: UiError = {
-  code: "INTERNAL_ERROR",
-  title: "Something went wrong",
-  message: "Pegas could not complete the request. Infrastructure details remain hidden from the browser.",
+  code: "MODEL_ERROR",
+  title: "Model error",
+  message: "Pegas could not complete the request safely. Infrastructure details remain hidden from the browser.",
 };
 
 type ViewState = "ready" | "loading" | "success" | "error";
