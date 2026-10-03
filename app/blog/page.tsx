@@ -20,6 +20,12 @@ const articles = [
     title: "When the Demo Worked - and Then Everything Broke",
     subtitle: "What persistent storage, cloud networking, and GPU detection taught us",
   },
+  {
+    href: "/blog/making-self-hosted-llm-easy-to-restart",
+    label: "Article 3",
+    title: "Making a Self-Hosted LLM Easy to Restart Was Harder Than Running It",
+    subtitle: "What RunPod storage, GPU availability, persistent models, HTTP proxying, and cold starts taught us about practical operation",
+  },
 ];
 
 export default function BlogPage() {
@@ -31,7 +37,7 @@ export default function BlogPage() {
           <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-blue-700">Field notes · October 2026</span>
           <h1 className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-6xl">How the proof was built.</h1>
           <p className="mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
-            Two practical chapters from turning Pegas from a polished frontend into a real open-model demo, then learning what it takes to keep that demo working.
+            Three practical field notes from turning Pegas into a real open-model demo, breaking it, and making the runtime easier to restart and operate.
           </p>
         </section>
 
