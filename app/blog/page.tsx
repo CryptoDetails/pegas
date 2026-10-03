@@ -26,6 +26,12 @@ const articles = [
     title: "Making a Self-Hosted LLM Easy to Restart Was Harder Than Running It",
     subtitle: "What RunPod storage, GPU availability, persistent models, HTTP proxying, and cold starts taught us about practical operation",
   },
+  {
+    href: "/blog/why-gpu-hosting-costs-so-much",
+    label: "Article 4",
+    title: "Why Does Running an Open Model Cost So Much?",
+    subtitle: "What we learned about GPU economics, CPU hosting, hosted inference, and why RunPod was a reasonable first choice for Pegas — even though it was not the final infrastructure answer.",
+  },
 ];
 
 export default function BlogPage() {
@@ -37,7 +43,7 @@ export default function BlogPage() {
           <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-blue-700">Field notes · October 2026</span>
           <h1 className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-6xl">How the proof was built.</h1>
           <p className="mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
-            Three practical field notes from turning Pegas into a real open-model demo, breaking it, and making the runtime easier to restart and operate.
+            Practical field notes from building, breaking, and operating a self-hosted open-model demo.
           </p>
         </section>
 
