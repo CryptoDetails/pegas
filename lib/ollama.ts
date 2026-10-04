@@ -4,7 +4,7 @@ import { TRIAGE_SYSTEM_PROMPT, wrapUntrustedBusinessMessage } from "./prompt";
 import { triageSchema, validateTriageOutput, type ValidatedTriage } from "./schema";
 import type { UiErrorCode } from "./types";
 
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
 export class ModelAdapterError extends Error {
   code: UiErrorCode;
@@ -32,6 +32,7 @@ function readRequiredConfig() {
   const baseUrl = process.env.MODEL_BASE_URL?.trim();
   const model = process.env.OLLAMA_MODEL?.trim();
   const gpuLabel = process.env.GPU_LABEL?.trim();
+  const authToken = process.env.MODEL_AUTH_TOKEN?.trim();
 
   if (!baseUrl || !model || !gpuLabel) {
     throw new ModelAdapterError("MODEL_ERROR");
@@ -41,6 +42,7 @@ function readRequiredConfig() {
     baseUrl: baseUrl.replace(/\/+$/, ""),
     model,
     gpuLabel,
+    authToken,
   };
 }
 
@@ -49,7 +51,7 @@ function isAbortError(error: unknown) {
 }
 
 export async function runOllamaTriage(message: string): Promise<OllamaResult> {
-  const { baseUrl, model, gpuLabel } = readRequiredConfig();
+  const { baseUrl, model, gpuLabel, authToken } = readRequiredConfig();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const startedAt = performance.now();
@@ -58,7 +60,10 @@ export async function runOllamaTriage(message: string): Promise<OllamaResult> {
   try {
     response = await fetch(`${baseUrl}/api/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
       body: JSON.stringify({
         model,
         stream: false,
