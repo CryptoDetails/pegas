@@ -31,6 +31,7 @@ export function RequestDeskWorkspace() {
   const [status, setStatus] = useState<"idle" | "running" | "failed" | "interrupted">("idle");
   const [error, setError] = useState<string | null>(null);
   const [backendResponded, setBackendResponded] = useState(false);
+  const [validationDetail, setValidationDetail] = useState<string | null>(null);
   const [pulseKey, setPulseKey] = useState(0);
   const [events, setEvents] = useState<WorkflowEvent[]>([]);
   const [manual, setManual] = useState(false);
@@ -95,8 +96,10 @@ export function RequestDeskWorkspace() {
       const payload = event.payload as {
         message?: string;
         backend_response_received?: boolean;
+        validation_detail?: string | null;
       };
       setBackendResponded(Boolean(payload.backend_response_received));
+      setValidationDetail(payload.validation_detail ?? null);
       setError(payload.message ?? "Workflow failed safely.");
       setStatus("failed");
     }
@@ -112,6 +115,7 @@ export function RequestDeskWorkspace() {
     setCard(null);
     setError(null);
     setBackendResponded(false);
+    setValidationDetail(null);
     setEvents([]);
     setPulseKey(0);
     setManual(false);
@@ -264,6 +268,11 @@ export function RequestDeskWorkspace() {
                 {backendResponded && (
                   <p className="mt-2 text-xs font-semibold text-rose-700">
                     Backend response received. The failure happened during structured-output validation.
+                  </p>
+                )}
+                {validationDetail && (
+                  <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 font-mono text-[11px] leading-5 text-rose-800">
+                    {validationDetail}
                   </p>
                 )}
               </div>

@@ -12,12 +12,11 @@ const priorities = ["low", "medium", "high"] as const;
 const confidentiality = ["internal", "confidential", "restricted"] as const;
 const reviewDecisions = ["approved", "revise", "manual_review", "needs_information"] as const;
 
-// Model-facing schemas intentionally keep primitive field shapes simple for Qwen3 4B.
-// Validators below normalize harmless small-model variations (notably null vs empty string)
-// while preserving the canonical public TypeScript contracts.
+// These schemas guide Ollama/Qwen. They intentionally require only the fields that
+// actually control routing/policy. Non-control arrays and nullable text are optional
+// because the backend normalizes them into the canonical public contracts below.
 export const intakeSchema = {
   type: "object",
-  additionalProperties: false,
   properties: {
     summary: { type: "string" },
     request_type: { type: "string" },
@@ -38,15 +37,11 @@ export const intakeSchema = {
     "confidentiality",
     "privacy_review_needed",
     "route_reason",
-    "evidence",
-    "missing_information",
-    "clarification_question",
   ],
 } as const;
 
 export const departmentSchema = {
   type: "object",
-  additionalProperties: false,
   properties: {
     department: { type: "string", enum: departments },
     summary: { type: "string" },
@@ -64,14 +59,11 @@ export const departmentSchema = {
     "confidentiality",
     "department_note",
     "next_action",
-    "open_questions",
-    "evidence",
   ],
 } as const;
 
 export const reviewSchema = {
   type: "object",
-  additionalProperties: false,
   properties: {
     decision: { type: "string", enum: reviewDecisions },
     issues: { type: "array", items: { type: "string" } },
@@ -80,76 +72,193 @@ export const reviewSchema = {
     reason: { type: "string" },
     evidence: { type: "array", items: { type: "string" }, maxItems: 3 },
   },
-  required: [
-    "decision",
-    "issues",
-    "correction_target",
-    "correction_request",
-    "reason",
-    "evidence",
-  ],
+  required: ["decision", "reason"],
 } as const;
+
+type ValidationFailure = { ok: false; reason: string };
+type ValidationSuccess<T> = { ok: true; value: T; normalized_fields: string[] };
+export type ValidationResult<T> = ValidationSuccess<T> | ValidationFailure;
+
+function isFailure<T>(result: ValidationResult<T>): result is ValidationFailure {
+  return result.ok === false;
+}
 
 function record(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function exactKeys(v: Record<string, unknown>, keys: string[]) {
-  const actual = Object.keys(v);
-  return actual.length === keys.length && actual.every((k) => keys.includes(k));
-}
+function objectForAgent(v: unknown, expectedKeys: readonly string[]): {
+  value: Record<string, unknown> | null;
+  normalized: string[];
+} {
+  if (!record(v)) return { value: null, normalized: [] };
 
-function str(v: unknown, max: number, allowEmpty = false): v is string {
-  return typeof v === "string" && v.length <= max && (allowEmpty || Boolean(v.trim()));
-}
-
-function strings(v: unknown, maxItem = 300): v is string[] {
-  return Array.isArray(v) && v.every((x) => str(x, maxItem));
-}
-
-function normalizedStrings(v: unknown, maxItem = 300): string[] | null {
-  if (!Array.isArray(v)) return null;
-  const result: string[] = [];
-  for (const item of v) {
-    if (typeof item !== "string") return null;
-    const trimmed = item.trim();
-    if (!trimmed) continue;
-    if (trimmed.length > maxItem) return null;
-    result.push(trimmed);
+  if (expectedKeys.some((key) => key in v)) {
+    return { value: v, normalized: [] };
   }
-  return result;
+
+  for (const wrapper of ["result", "output", "response", "data"] as const) {
+    const nested = v[wrapper];
+    if (record(nested) && expectedKeys.some((key) => key in nested)) {
+      return { value: nested, normalized: [`unwrapped_${wrapper}`] };
+    }
+  }
+
+  return { value: v, normalized: [] };
 }
 
-function enumValue<T extends readonly string[]>(v: unknown, values: T): v is T[number] {
-  return typeof v === "string" && values.includes(v as T[number]);
+function requiredText(
+  value: unknown,
+  field: string,
+  max: number,
+): ValidationResult<string> {
+  if (typeof value !== "string") {
+    return { ok: false, reason: `${field} must be a string` };
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return { ok: false, reason: `${field} must not be empty` };
+  if (trimmed.length > max) {
+    return { ok: false, reason: `${field} exceeds ${max} characters` };
+  }
+  return {
+    ok: true,
+    value: trimmed,
+    normalized_fields: trimmed === value ? [] : [`trimmed_${field}`],
+  };
 }
 
-// Evidence is optional support, not a control signal. Small local models sometimes
-// paraphrase a quote even when instructed not to. We never publish such paraphrases:
-// keep only exact substrings of sanitized_request and discard the rest.
-function canonicalEvidence(v: unknown, source: string): string[] | null {
-  if (!Array.isArray(v)) return null;
+function optionalText(
+  value: unknown,
+  field: string,
+  max: number,
+): ValidationResult<string | null> {
+  if (value === undefined || value === null || value === "") {
+    return {
+      ok: true,
+      value: null,
+      normalized_fields: value === undefined ? [`defaulted_${field}`] : [],
+    };
+  }
+  if (typeof value !== "string") {
+    return { ok: false, reason: `${field} must be a string, null, or omitted` };
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return { ok: true, value: null, normalized_fields: [`normalized_${field}`] };
+  if (trimmed.length > max) {
+    return { ok: false, reason: `${field} exceeds ${max} characters` };
+  }
+  return {
+    ok: true,
+    value: trimmed,
+    normalized_fields: trimmed === value ? [] : [`trimmed_${field}`],
+  };
+}
+
+function textArray(
+  value: unknown,
+  field: string,
+  maxItem: number,
+): ValidationResult<string[]> {
+  if (value === undefined || value === null) {
+    return { ok: true, value: [], normalized_fields: [`defaulted_${field}`] };
+  }
+
+  const source = typeof value === "string" ? [value] : value;
+  if (!Array.isArray(source)) {
+    return { ok: false, reason: `${field} must be an array, string, null, or omitted` };
+  }
+
+  const result: string[] = [];
+  let normalized = typeof value === "string";
+  for (const item of source) {
+    if (typeof item !== "string") {
+      return { ok: false, reason: `${field} contains a non-string item` };
+    }
+    const trimmed = item.trim();
+    if (!trimmed) {
+      normalized = true;
+      continue;
+    }
+    if (trimmed.length > maxItem) {
+      return { ok: false, reason: `${field} contains an item over ${maxItem} characters` };
+    }
+    result.push(trimmed);
+    if (trimmed !== item) normalized = true;
+  }
+
+  return {
+    ok: true,
+    value: result,
+    normalized_fields: normalized ? [`normalized_${field}`] : [],
+  };
+}
+
+function evidenceArray(value: unknown, source: string): { value: string[]; normalized_fields: string[] } {
+  if (!Array.isArray(value)) {
+    return {
+      value: [],
+      normalized_fields: value === undefined ? ["defaulted_evidence"] : ["discarded_invalid_evidence"],
+    };
+  }
+
   const exact: string[] = [];
-  for (const item of v) {
-    if (typeof item !== "string") return null;
-    if (item.length === 0 || item.length > 180) continue;
-    if (!source.includes(item)) continue;
-    if (!exact.includes(item)) exact.push(item);
+  let discarded = false;
+  for (const item of value) {
+    if (typeof item !== "string") {
+      discarded = true;
+      continue;
+    }
+    const candidate = item.trim();
+    if (!candidate || candidate.length > 180 || !source.includes(candidate)) {
+      discarded = true;
+      continue;
+    }
+    if (!exact.includes(candidate)) exact.push(candidate);
     if (exact.length === 3) break;
   }
-  return exact;
+
+  return {
+    value: exact,
+    normalized_fields: discarded ? ["filtered_evidence"] : [],
+  };
 }
 
-function nullableText(v: unknown, max: number): string | null | undefined {
-  if (v === null) return null;
-  if (typeof v !== "string" || v.length > max) return undefined;
-  const trimmed = v.trim();
-  return trimmed || null;
+function enumText<T extends readonly string[]>(
+  value: unknown,
+  field: string,
+  values: T,
+): ValidationResult<T[number]> {
+  if (typeof value !== "string") {
+    return { ok: false, reason: `${field} must be one of: ${values.join(", ")}` };
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!values.includes(normalized as T[number])) {
+    return { ok: false, reason: `${field} has unsupported value ${JSON.stringify(value)}` };
+  }
+  return {
+    ok: true,
+    value: normalized as T[number],
+    normalized_fields: normalized === value ? [] : [`normalized_${field}`],
+  };
 }
 
-export function validateIntake(v: unknown, source: string): IntakeAssessment | null {
-  if (!record(v)) return null;
-  const keys = [
+function booleanValue(value: unknown, field: string): ValidationResult<boolean> {
+  if (typeof value === "boolean") return { ok: true, value, normalized_fields: [] };
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "false") {
+      return { ok: true, value: normalized === "true", normalized_fields: [`normalized_${field}`] };
+    }
+  }
+  return { ok: false, reason: `${field} must be true or false` };
+}
+
+function mergeNormalized(...parts: string[][]) {
+  return [...new Set(parts.flat())];
+}
+
+export function validateIntake(v: unknown, source: string): ValidationResult<IntakeAssessment> {
+  const expected = [
     "summary",
     "request_type",
     "department_candidate",
@@ -160,38 +269,58 @@ export function validateIntake(v: unknown, source: string): IntakeAssessment | n
     "evidence",
     "missing_information",
     "clarification_question",
-  ];
-  if (!exactKeys(v, keys)) return null;
+  ] as const;
+  const root = objectForAgent(v, expected);
+  if (!root.value) return { ok: false, reason: "intake output must be a JSON object" };
+  const data = root.value;
 
-  const evidence = canonicalEvidence(v.evidence, source);
-  const clarificationQuestion = nullableText(v.clarification_question, 300);
-
-  if (
-    !str(v.summary, 300) ||
-    !str(v.request_type, 120) ||
-    !enumValue(v.department_candidate, [...departments, "unknown"] as const) ||
-    !enumValue(v.priority, priorities) ||
-    !enumValue(v.confidentiality, confidentiality) ||
-    typeof v.privacy_review_needed !== "boolean" ||
-    !str(v.route_reason, 240) ||
-    evidence === null ||
-    !strings(v.missing_information, 240) ||
-    clarificationQuestion === undefined
-  ) {
-    return null;
-  }
+  const summary = requiredText(data.summary, "summary", 300);
+  if (isFailure(summary)) return summary;
+  const requestType = requiredText(data.request_type, "request_type", 120);
+  if (isFailure(requestType)) return requestType;
+  const department = enumText(data.department_candidate, "department_candidate", [...departments, "unknown"] as const);
+  if (isFailure(department)) return department;
+  const priority = enumText(data.priority, "priority", priorities);
+  if (isFailure(priority)) return priority;
+  const confidentialityValue = enumText(data.confidentiality, "confidentiality", confidentiality);
+  if (isFailure(confidentialityValue)) return confidentialityValue;
+  const privacy = booleanValue(data.privacy_review_needed, "privacy_review_needed");
+  if (isFailure(privacy)) return privacy;
+  const routeReason = requiredText(data.route_reason, "route_reason", 240);
+  if (isFailure(routeReason)) return routeReason;
+  const evidence = evidenceArray(data.evidence, source);
+  const missing = textArray(data.missing_information, "missing_information", 240);
+  if (isFailure(missing)) return missing;
+  const clarification = optionalText(data.clarification_question, "clarification_question", 300);
+  if (isFailure(clarification)) return clarification;
 
   return {
-    summary: v.summary,
-    request_type: v.request_type,
-    department_candidate: v.department_candidate,
-    priority: v.priority,
-    confidentiality: v.confidentiality,
-    privacy_review_needed: v.privacy_review_needed,
-    route_reason: v.route_reason,
-    evidence,
-    missing_information: v.missing_information,
-    clarification_question: clarificationQuestion,
+    ok: true,
+    value: {
+      summary: summary.value,
+      request_type: requestType.value,
+      department_candidate: department.value,
+      priority: priority.value,
+      confidentiality: confidentialityValue.value,
+      privacy_review_needed: privacy.value,
+      route_reason: routeReason.value,
+      evidence: evidence.value,
+      missing_information: missing.value,
+      clarification_question: clarification.value,
+    },
+    normalized_fields: mergeNormalized(
+      root.normalized,
+      summary.normalized_fields,
+      requestType.normalized_fields,
+      department.normalized_fields,
+      priority.normalized_fields,
+      confidentialityValue.normalized_fields,
+      privacy.normalized_fields,
+      routeReason.normalized_fields,
+      evidence.normalized_fields,
+      missing.normalized_fields,
+      clarification.normalized_fields,
+    ),
   };
 }
 
@@ -199,9 +328,8 @@ export function validateDepartment(
   v: unknown,
   source: string,
   selected: Department,
-): DepartmentProposal | null {
-  if (!record(v)) return null;
-  const keys = [
+): ValidationResult<DepartmentProposal> {
+  const expected = [
     "department",
     "summary",
     "priority",
@@ -210,79 +338,109 @@ export function validateDepartment(
     "next_action",
     "open_questions",
     "evidence",
-  ];
-  if (!exactKeys(v, keys)) return null;
+  ] as const;
+  const root = objectForAgent(v, expected);
+  if (!root.value) return { ok: false, reason: "department output must be a JSON object" };
+  const data = root.value;
 
-  const evidence = canonicalEvidence(v.evidence, source);
-  const openQuestions = normalizedStrings(v.open_questions, 240);
-
-  if (
-    v.department !== selected ||
-    !enumValue(v.department, departments) ||
-    !str(v.summary, 300) ||
-    !enumValue(v.priority, priorities) ||
-    !enumValue(v.confidentiality, confidentiality) ||
-    !str(v.department_note, 500) ||
-    !str(v.next_action, 300) ||
-    openQuestions === null ||
-    evidence === null
-  ) {
-    return null;
+  const department = enumText(data.department, "department", departments);
+  if (isFailure(department)) return department;
+  if (department.value !== selected) {
+    return { ok: false, reason: `department must remain ${selected}, received ${department.value}` };
   }
+  const summary = requiredText(data.summary, "summary", 300);
+  if (isFailure(summary)) return summary;
+  const priority = enumText(data.priority, "priority", priorities);
+  if (isFailure(priority)) return priority;
+  const confidentialityValue = enumText(data.confidentiality, "confidentiality", confidentiality);
+  if (isFailure(confidentialityValue)) return confidentialityValue;
+  const departmentNote = requiredText(data.department_note, "department_note", 500);
+  if (isFailure(departmentNote)) return departmentNote;
+  const nextAction = requiredText(data.next_action, "next_action", 300);
+  if (isFailure(nextAction)) return nextAction;
+  const openQuestions = textArray(data.open_questions, "open_questions", 240);
+  if (isFailure(openQuestions)) return openQuestions;
+  const evidence = evidenceArray(data.evidence, source);
 
   return {
-    department: v.department,
-    summary: v.summary,
-    priority: v.priority,
-    confidentiality: v.confidentiality,
-    department_note: v.department_note,
-    next_action: v.next_action,
-    open_questions: openQuestions,
-    evidence,
+    ok: true,
+    value: {
+      department: department.value,
+      summary: summary.value,
+      priority: priority.value,
+      confidentiality: confidentialityValue.value,
+      department_note: departmentNote.value,
+      next_action: nextAction.value,
+      open_questions: openQuestions.value,
+      evidence: evidence.value,
+    },
+    normalized_fields: mergeNormalized(
+      root.normalized,
+      department.normalized_fields,
+      summary.normalized_fields,
+      priority.normalized_fields,
+      confidentialityValue.normalized_fields,
+      departmentNote.normalized_fields,
+      nextAction.normalized_fields,
+      openQuestions.normalized_fields,
+      evidence.normalized_fields,
+    ),
   };
 }
 
-export function validateReview(v: unknown, source: string): ReviewDecision | null {
-  if (!record(v)) return null;
-  const keys = [
+export function validateReview(v: unknown, source: string): ValidationResult<ReviewDecision> {
+  const expected = [
     "decision",
     "issues",
     "correction_target",
     "correction_request",
     "reason",
     "evidence",
-  ];
-  if (!exactKeys(v, keys)) return null;
+  ] as const;
+  const root = objectForAgent(v, expected);
+  if (!root.value) return { ok: false, reason: "review output must be a JSON object" };
+  const data = root.value;
 
-  const issues = normalizedStrings(v.issues, 240);
-  const evidence = canonicalEvidence(v.evidence, source);
-  const correctionRequest = nullableText(v.correction_request, 300);
+  const decision = enumText(data.decision, "decision", reviewDecisions);
+  if (isFailure(decision)) return decision;
+  const issues = textArray(data.issues, "issues", 240);
+  if (isFailure(issues)) return issues;
+  const reason = requiredText(data.reason, "reason", 240);
+  if (isFailure(reason)) return reason;
+  const correctionRequest = optionalText(data.correction_request, "correction_request", 300);
+  if (isFailure(correctionRequest)) return correctionRequest;
+  const evidence = evidenceArray(data.evidence, source);
 
-  let correctionTarget: Department | null;
-  if (v.correction_target === null || v.correction_target === "") {
-    correctionTarget = null;
-  } else if (enumValue(v.correction_target, departments)) {
-    correctionTarget = v.correction_target;
-  } else {
-    return null;
-  }
-
-  if (
-    !enumValue(v.decision, reviewDecisions) ||
-    issues === null ||
-    correctionRequest === undefined ||
-    !str(v.reason, 240) ||
-    evidence === null
-  ) {
-    return null;
+  let correctionTarget: Department | null = null;
+  const targetRaw = data.correction_target;
+  const targetNormalized: string[] = [];
+  if (targetRaw !== undefined && targetRaw !== null && targetRaw !== "") {
+    const target = enumText(targetRaw, "correction_target", departments);
+    if (isFailure(target)) return target;
+    correctionTarget = target.value;
+    targetNormalized.push(...target.normalized_fields);
+  } else if (targetRaw === undefined) {
+    targetNormalized.push("defaulted_correction_target");
   }
 
   return {
-    decision: v.decision,
-    issues,
-    correction_target: correctionTarget,
-    correction_request: correctionRequest,
-    reason: v.reason,
-    evidence,
+    ok: true,
+    value: {
+      decision: decision.value,
+      issues: issues.value,
+      correction_target: correctionTarget,
+      correction_request: correctionRequest.value,
+      reason: reason.value,
+      evidence: evidence.value,
+    },
+    normalized_fields: mergeNormalized(
+      root.normalized,
+      decision.normalized_fields,
+      issues.normalized_fields,
+      targetNormalized,
+      correctionRequest.normalized_fields,
+      reason.normalized_fields,
+      evidence.normalized_fields,
+    ),
   };
 }

@@ -1,7 +1,7 @@
 import { runStructuredModel, StructuredModelError } from "../ollama";
 import { createEventFactory, type EventEmitter } from "./events";
 import { BUSINESS_SYSTEM_PROMPT, FINANCE_SYSTEM_PROMPT, INTAKE_SYSTEM_PROMPT, REVIEWER_SYSTEM_PROMPT, TECHNICAL_SYSTEM_PROMPT, wrapAgentInput } from "./prompts";
-import { departmentSchema, intakeSchema, reviewSchema, validateDepartment, validateIntake, validateReview } from "./schemas";
+import { departmentSchema, intakeSchema, reviewSchema, validateDepartment, validateIntake, validateReview, type ValidationResult } from "./schemas";
 import { sanitizeRequest } from "./sanitize";
 import type { AgentId, Department, DepartmentProposal, FinalRequestCard, IntakeAssessment, ReviewDecision, WorkflowEvent } from "./types";
 
@@ -14,6 +14,7 @@ class WorkflowError extends Error {
   constructor(
     public readonly code: "model_offline" | "model_timeout" | "invalid_model_output" | "workflow_deadline" | "call_budget" | "interrupted" | "model_error",
     public readonly backendResponseReceived = false,
+    public readonly validationDetail: string | null = null,
   ) {
     super(code);
   }
@@ -35,6 +36,8 @@ function safeErrorPayload(error: unknown) {
     message: messages[code] ?? messages.model_error,
     backend_response_received:
       error instanceof WorkflowError ? error.backendResponseReceived : false,
+    validation_detail:
+      error instanceof WorkflowError ? error.validationDetail : null,
   };
 }
 
@@ -61,27 +64,54 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     if (remainingMs() <= 0) throw new WorkflowError("workflow_deadline");
   };
 
-  async function callAgent<T>(args: { agentId: AgentId; stepId: string; systemPrompt: string; context: Record<string, unknown>; schema: unknown; validator: (v: unknown) => T | null; }) {
+  async function callAgent<T>(args: { agentId: AgentId; stepId: string; systemPrompt: string; context: Record<string, unknown>; schema: unknown; validator: (v: unknown) => ValidationResult<T>; }) {
     let repaired = false;
+    let repairReason = "The response did not match the required contract.";
+
     while (true) {
       assertRunActive();
       if (attempts >= MAX_LLM_ATTEMPTS) throw new WorkflowError("call_budget");
       attempts += 1;
+
+      let lastValidationReason = "The response did not match the required contract.";
       try {
-        const prompt = repaired ? `${wrapAgentInput(args.context)}\n\n<SERVER_REPAIR_INSTRUCTION>${REPAIR_INSTRUCTION}</SERVER_REPAIR_INSTRUCTION>` : wrapAgentInput(args.context);
+        const repairInstruction = repaired
+          ? `${REPAIR_INSTRUCTION} Specific validation issue: ${repairReason}`
+          : null;
+        const prompt = repairInstruction
+          ? `${wrapAgentInput(args.context)}\n\n<SERVER_REPAIR_INSTRUCTION>${repairInstruction}</SERVER_REPAIR_INSTRUCTION>`
+          : wrapAgentInput(args.context);
+
         return (await runStructuredModel({
           systemPrompt: args.systemPrompt,
           prompt,
           schema: args.schema,
-          validator: args.validator,
+          validator: (value) => {
+            const result = args.validator(value);
+            if (result.ok === false) {
+              lastValidationReason = result.reason;
+              return null;
+            }
+            return result.value;
+          },
           signal,
           timeoutMs: Math.min(MODEL_ATTEMPT_MS, Math.max(1, remainingMs())),
           maxOutputTokens: 600,
         })).value;
       } catch (error) {
-        if (error instanceof StructuredModelError && error.code === "INVALID_OUTPUT" && !repaired) { repaired = true; continue; }
+        if (error instanceof StructuredModelError && error.code === "INVALID_OUTPUT" && !repaired) {
+          repaired = true;
+          repairReason = lastValidationReason;
+          continue;
+        }
         if (error instanceof StructuredModelError) {
-          if (error.code === "INVALID_OUTPUT") throw new WorkflowError("invalid_model_output", error.backendResponseReceived);
+          if (error.code === "INVALID_OUTPUT") {
+            throw new WorkflowError(
+              "invalid_model_output",
+              error.backendResponseReceived,
+              `${args.agentId}: ${lastValidationReason}`,
+            );
+          }
           if (error.code === "MODEL_OFFLINE") throw new WorkflowError("model_offline", error.backendResponseReceived);
           if (error.code === "MODEL_TIMEOUT") throw new WorkflowError("model_timeout", error.backendResponseReceived);
           throw new WorkflowError("model_error", error.backendResponseReceived);
