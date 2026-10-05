@@ -12,9 +12,9 @@ const priorities = ["low", "medium", "high"] as const;
 const confidentiality = ["internal", "confidential", "restricted"] as const;
 const reviewDecisions = ["approved", "revise", "manual_review", "needs_information"] as const;
 
-// Model-facing schemas intentionally avoid nullable anyOf branches. Small local models
-// are materially more reliable when every required field has one primitive type.
-// Empty strings are normalized to null by the validators below.
+// Model-facing schemas intentionally keep primitive field shapes simple for Qwen3 4B.
+// Validators below normalize harmless small-model variations (notably null vs empty string)
+// while preserving the canonical public TypeScript contracts.
 export const intakeSchema = {
   type: "object",
   additionalProperties: false,
@@ -107,22 +107,44 @@ function strings(v: unknown, maxItem = 300): v is string[] {
   return Array.isArray(v) && v.every((x) => str(x, maxItem));
 }
 
+function normalizedStrings(v: unknown, maxItem = 300): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const result: string[] = [];
+  for (const item of v) {
+    if (typeof item !== "string") return null;
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    if (trimmed.length > maxItem) return null;
+    result.push(trimmed);
+  }
+  return result;
+}
+
 function enumValue<T extends readonly string[]>(v: unknown, values: T): v is T[number] {
   return typeof v === "string" && values.includes(v as T[number]);
 }
 
-function validEvidence(v: unknown, source: string) {
-  return (
-    Array.isArray(v) &&
-    v.length <= 3 &&
-    v.every(
-      (x) =>
-        typeof x === "string" &&
-        x.length > 0 &&
-        x.length <= 180 &&
-        source.includes(x),
-    )
-  );
+// Evidence is optional support, not a control signal. Small local models sometimes
+// paraphrase a quote even when instructed not to. We never publish such paraphrases:
+// keep only exact substrings of sanitized_request and discard the rest.
+function canonicalEvidence(v: unknown, source: string): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const exact: string[] = [];
+  for (const item of v) {
+    if (typeof item !== "string") return null;
+    if (item.length === 0 || item.length > 180) continue;
+    if (!source.includes(item)) continue;
+    if (!exact.includes(item)) exact.push(item);
+    if (exact.length === 3) break;
+  }
+  return exact;
+}
+
+function nullableText(v: unknown, max: number): string | null | undefined {
+  if (v === null) return null;
+  if (typeof v !== "string" || v.length > max) return undefined;
+  const trimmed = v.trim();
+  return trimmed || null;
 }
 
 export function validateIntake(v: unknown, source: string): IntakeAssessment | null {
@@ -141,6 +163,9 @@ export function validateIntake(v: unknown, source: string): IntakeAssessment | n
   ];
   if (!exactKeys(v, keys)) return null;
 
+  const evidence = canonicalEvidence(v.evidence, source);
+  const clarificationQuestion = nullableText(v.clarification_question, 300);
+
   if (
     !str(v.summary, 300) ||
     !str(v.request_type, 120) ||
@@ -149,9 +174,9 @@ export function validateIntake(v: unknown, source: string): IntakeAssessment | n
     !enumValue(v.confidentiality, confidentiality) ||
     typeof v.privacy_review_needed !== "boolean" ||
     !str(v.route_reason, 240) ||
-    !validEvidence(v.evidence, source) ||
+    evidence === null ||
     !strings(v.missing_information, 240) ||
-    !str(v.clarification_question, 300, true)
+    clarificationQuestion === undefined
   ) {
     return null;
   }
@@ -164,9 +189,9 @@ export function validateIntake(v: unknown, source: string): IntakeAssessment | n
     confidentiality: v.confidentiality,
     privacy_review_needed: v.privacy_review_needed,
     route_reason: v.route_reason,
-    evidence: v.evidence as string[],
+    evidence,
     missing_information: v.missing_information,
-    clarification_question: v.clarification_question.trim() || null,
+    clarification_question: clarificationQuestion,
   };
 }
 
@@ -188,6 +213,9 @@ export function validateDepartment(
   ];
   if (!exactKeys(v, keys)) return null;
 
+  const evidence = canonicalEvidence(v.evidence, source);
+  const openQuestions = normalizedStrings(v.open_questions, 240);
+
   if (
     v.department !== selected ||
     !enumValue(v.department, departments) ||
@@ -196,8 +224,8 @@ export function validateDepartment(
     !enumValue(v.confidentiality, confidentiality) ||
     !str(v.department_note, 500) ||
     !str(v.next_action, 300) ||
-    !strings(v.open_questions, 240) ||
-    !validEvidence(v.evidence, source)
+    openQuestions === null ||
+    evidence === null
   ) {
     return null;
   }
@@ -209,8 +237,8 @@ export function validateDepartment(
     confidentiality: v.confidentiality,
     department_note: v.department_note,
     next_action: v.next_action,
-    open_questions: v.open_questions,
-    evidence: v.evidence as string[],
+    open_questions: openQuestions,
+    evidence,
   };
 }
 
@@ -226,23 +254,35 @@ export function validateReview(v: unknown, source: string): ReviewDecision | nul
   ];
   if (!exactKeys(v, keys)) return null;
 
+  const issues = normalizedStrings(v.issues, 240);
+  const evidence = canonicalEvidence(v.evidence, source);
+  const correctionRequest = nullableText(v.correction_request, 300);
+
+  let correctionTarget: Department | null;
+  if (v.correction_target === null || v.correction_target === "") {
+    correctionTarget = null;
+  } else if (enumValue(v.correction_target, departments)) {
+    correctionTarget = v.correction_target;
+  } else {
+    return null;
+  }
+
   if (
     !enumValue(v.decision, reviewDecisions) ||
-    !strings(v.issues, 240) ||
-    !enumValue(v.correction_target, [...departments, ""] as const) ||
-    !str(v.correction_request, 300, true) ||
+    issues === null ||
+    correctionRequest === undefined ||
     !str(v.reason, 240) ||
-    !validEvidence(v.evidence, source)
+    evidence === null
   ) {
     return null;
   }
 
   return {
     decision: v.decision,
-    issues: v.issues,
-    correction_target: v.correction_target === "" ? null : v.correction_target,
-    correction_request: v.correction_request.trim() || null,
+    issues,
+    correction_target: correctionTarget,
+    correction_request: correctionRequest,
     reason: v.reason,
-    evidence: v.evidence as string[],
+    evidence,
   };
 }
