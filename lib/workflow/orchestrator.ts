@@ -48,6 +48,13 @@ function departmentPrompt(department: Department) {
   return department === "technical" ? TECHNICAL_SYSTEM_PROMPT : department === "business" ? BUSINESS_SYSTEM_PROMPT : FINANCE_SYSTEM_PROMPT;
 }
 
+function isClearlyUnderspecifiedRequest(message: string) {
+  const text = message.toLowerCase();
+  const vague = /\b(needs? help|need help|an issue|some issue|a problem|some problem|please route|right team|who should handle|which team)\b/.test(text);
+  const concreteSignal = /\b(api|endpoint|http|401|403|500|integration|bug|error|technical|developer|sdk|webhook|campaign|marketing|partnership|partner launch|business|sales|invoice|billing|charge|payment|finance|refund)\b/.test(text);
+  return vague && !concreteSignal;
+}
+
 export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter, signal?: AbortSignal) {
   const runId = crypto.randomUUID();
   const eventFactory = createEventFactory(runId);
@@ -130,6 +137,29 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     emit("workflow_started", "workflow", null, { status: "running" });
     emit("input_checked", "input", null, { character_count: sanitized.sanitized.length, sensitivity_flag_types: sanitized.flagTypes, confidentiality_floor: sanitized.confidentialityFloor });
 
+    if (sanitized.flagTypes.length > 0) {
+      const reason = "Credential-like material was detected and redacted. Phase 1 stops this request for manual review before any model call.";
+      emit("routing_decision", "routing", null, { decision: "manual_review", reason, sensitivity_flag_types: sanitized.flagTypes });
+      emit("agent_skipped", "intake", "intake_agent", { reason: "Sensitive input was stopped before model processing." });
+      for (const dept of ["technical", "business", "finance"] as const) emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Sensitive request stopped before department routing." });
+      emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "No department proposal was created." });
+      const card: FinalRequestCard = {
+        run_id: runId,
+        outcome: "manual_review",
+        department: null,
+        priority: null,
+        confidentiality: "restricted",
+        summary: "Sensitive request detected before model processing.",
+        department_note: null,
+        next_action: null,
+        route_explanation: reason,
+        review_status: "manual_review",
+        clarification_question: null,
+      };
+      emit("workflow_completed", "workflow", null, card);
+      return;
+    }
+
     emit("agent_started", "intake", "intake_agent", { role: "Intake" });
     const intakeContext = { sanitized_request: sanitized.sanitized, confidentiality_floor: sanitized.confidentialityFloor };
     let intake: IntakeAssessment;
@@ -150,12 +180,18 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       return;
     }
 
-    if (intake.department_candidate === "unknown" || intake.clarification_question) {
-      const question = intake.clarification_question ?? "Which team should own this request: Technical, Business, or Finance?";
-      emit("routing_decision", "routing", "intake_agent", { decision: "needs_information", reason: intake.route_reason });
+    const deterministicNeedsInformation = isClearlyUnderspecifiedRequest(sanitized.sanitized);
+    if (intake.department_candidate === "unknown" || intake.clarification_question || deterministicNeedsInformation) {
+      const question = deterministicNeedsInformation
+        ? "What is the request actually about: a technical/integration issue, a business/partnership matter, or a billing/finance issue?"
+        : intake.clarification_question ?? "Which team should own this request: Technical, Business, or Finance?";
+      const needsInfoReason = deterministicNeedsInformation
+        ? "The request is too vague to route safely from the available information."
+        : intake.route_reason;
+      emit("routing_decision", "routing", "intake_agent", { decision: "needs_information", reason: needsInfoReason });
       for (const dept of ["technical", "business", "finance"] as const) emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Routing needs clarification." });
       emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "No department proposal was created." });
-      const card: FinalRequestCard = { run_id: runId, outcome: "needs_information", department: null, priority: intake.priority, confidentiality: intake.confidentiality, summary: intake.summary, department_note: null, next_action: null, route_explanation: intake.route_reason, review_status: "not_run", clarification_question: question };
+      const card: FinalRequestCard = { run_id: runId, outcome: "needs_information", department: null, priority: intake.priority, confidentiality: intake.confidentiality, summary: intake.summary, department_note: null, next_action: null, route_explanation: needsInfoReason, review_status: "not_run", clarification_question: question };
       emit("workflow_completed", "workflow", null, card);
       return;
     }
