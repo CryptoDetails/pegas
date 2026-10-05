@@ -161,15 +161,15 @@ export function RequestDeskWorkspace() {
     <div className="min-h-screen">
       <AppHeader active="demo" />
       <main className="mx-auto max-w-7xl px-5 py-10 sm:px-8 sm:py-14">
-        <div className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-start">
-          <section>
+        <div className="grid gap-10 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] lg:items-start">
+          <section className="min-w-0">
             <span className="inline-flex items-center gap-2 rounded-full border border-[var(--pegas-border)] bg-white px-3 py-1.5 text-xs font-bold text-[var(--pegas-blue-dark)]"><span className="h-2 w-2 rounded-full bg-[var(--pegas-cyan)]" />Request Desk · Phase 3</span>
             <h1 className="mt-5 max-w-2xl text-4xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-5xl">One request. The right team.</h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-slate-600">Watch one self-hosted model intake, protect, route, and review a fictional request with inspectable agent handoffs.</p>
 
             <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 card-shadow">
               <label htmlFor="request" className="text-sm font-semibold text-slate-900">Request</label>
-              <textarea id="request" value={message} onChange={(event) => setMessage(event.target.value)} disabled={busy} maxLength={4000} rows={8} className="focus-ring mt-3 w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-800 outline-none disabled:opacity-60" />
+              <textarea id="request" value={message} onChange={(event) => setMessage(event.target.value)} disabled={busy} maxLength={4000} rows={8} className="focus-ring mt-3 min-h-[210px] w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-800 outline-none disabled:opacity-60" />
               <div className="mt-3 flex flex-wrap gap-2">{Object.entries(presets).map(([label, value]) => <button key={label} type="button" disabled={busy} onClick={() => setMessage(value)} className="focus-ring rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-[var(--pegas-blue)] hover:text-[var(--pegas-blue-dark)] disabled:opacity-50">{label}</button>)}</div>
               <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><strong>Use fictional requests.</strong> Do not enter passwords, API keys, or real personal data.</div>
               <p className="mt-3 text-xs leading-5 text-slate-500">The first run after idle can take around 90 seconds based on a prior observed run. Follow-up calls are typically much faster, but startup time can vary.</p>
@@ -179,7 +179,7 @@ export function RequestDeskWorkspace() {
             </div>
           </section>
 
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <WorkflowGraph states={states} selected={selected} pulse={pulse} manual={manual} />
             {(error || status === "interrupted") && <div className="rounded-3xl border border-rose-200 bg-rose-50 p-5"><p className="text-sm font-bold text-rose-800">{status === "interrupted" ? "Interrupted" : "Workflow error"}</p><p className="mt-2 text-sm leading-6 text-rose-700">{error}</p>{backendResponded && <p className="mt-2 text-xs font-semibold text-rose-700">Backend response received. The failure happened during structured-output validation.</p>}{validationDetail && <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 font-mono text-[11px] leading-5 text-rose-800">{validationDetail}</p>}</div>}
             {card && <WorkflowResultCard card={card} />}

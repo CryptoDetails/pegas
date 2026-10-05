@@ -13,6 +13,7 @@ export const INTAKE_SYSTEM_PROMPT = [
   "Use confidentiality=internal for ordinary non-sensitive business requests. Use confidential or restricted only when the source content itself justifies it.",
   "Set privacy_review_needed=true only when the request actually contains privacy-sensitive personal or protected information. Otherwise set it to false.",
   "If the route is clear, clarification_question MUST be an empty string. If the route is not safe, use department_candidate=unknown and put exactly one concise question in clarification_question.",
+  "Keep summary under 220 characters, request_type under 80 characters, and route_reason under 180 characters. Keep missing_information items concise.",
   "missing_information may be an empty array when nothing material is missing.",
   evidenceRule,
   "Return only the structured object required by the provided schema. Do not add commentary, markdown, code fences, or extra keys.",

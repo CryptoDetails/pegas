@@ -9,7 +9,7 @@ export function HandoffInspector({ handoffs }: { handoffs: Handoff[] }) {
   const selected = handoffs.find((item) => item.handoff_id === selectedId) ?? handoffs[handoffs.length - 1];
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 card-shadow">
+    <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 card-shadow">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Handoff inspector</p>
@@ -26,17 +26,17 @@ export function HandoffInspector({ handoffs }: { handoffs: Handoff[] }) {
         ))}
       </div>
 
-      <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+      <div className="mt-4 min-w-0 overflow-hidden rounded-2xl bg-slate-50 p-4">
         <p className="text-sm font-bold text-slate-900">{agentLabel(selected.source_agent_id)} → {agentLabel(selected.target_agent_id)}</p>
         <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Why</p>
-        <p className="mt-1 text-sm leading-6 text-slate-700">{selected.reason}</p>
+        <p className="mt-1 break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">{selected.reason}</p>
 
         <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-slate-400">What was passed</p>
         <div className="mt-2 space-y-2">
           {Object.entries(selected.forwarded_context).map(([key, value]) => (
-            <div key={key} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <div key={key} className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white px-3 py-2">
               <p className="text-[11px] font-bold text-slate-500">{key}</p>
-              <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-slate-700">{formatValue(value)}</pre>
+              <pre className="mt-1 max-w-full whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-slate-700 [overflow-wrap:anywhere]">{formatValue(value)}</pre>
             </div>
           ))}
         </div>

@@ -136,7 +136,11 @@ function requiredText(
   const trimmed = value.trim();
   if (!trimmed) return { ok: false, reason: `${field} must not be empty` };
   if (trimmed.length > max) {
-    return { ok: false, reason: `${field} exceeds ${max} characters` };
+    return {
+      ok: true,
+      value: trimmed.slice(0, max).trimEnd(),
+      normalized_fields: [`truncated_${field}`],
+    };
   }
   return {
     ok: true,
@@ -163,7 +167,11 @@ function optionalText(
   const trimmed = value.trim();
   if (!trimmed) return { ok: true, value: null, normalized_fields: [`normalized_${field}`] };
   if (trimmed.length > max) {
-    return { ok: false, reason: `${field} exceeds ${max} characters` };
+    return {
+      ok: true,
+      value: trimmed.slice(0, max).trimEnd(),
+      normalized_fields: [`truncated_${field}`],
+    };
   }
   return {
     ok: true,
@@ -198,7 +206,9 @@ function textArray(
       continue;
     }
     if (trimmed.length > maxItem) {
-      return { ok: false, reason: `${field} contains an item over ${maxItem} characters` };
+      result.push(trimmed.slice(0, maxItem).trimEnd());
+      normalized = true;
+      continue;
     }
     result.push(trimmed);
     if (trimmed !== item) normalized = true;
