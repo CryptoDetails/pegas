@@ -4,7 +4,7 @@ import { AppHeader } from "@/components/AppHeader";
 
 export const metadata: Metadata = {
   title: "Pegas Blog | Building a self-hosted open LLM",
-  description: "Field notes from building Pegas: running Qwen3 4B on a rented GPU, proving the runtime, and debugging storage, networking, and GPU selection.",
+  description: "Field notes from building Pegas: self-hosted Qwen3 4B, serverless GPU lifecycle, multi-agent routing, privacy review, and inspectable handoffs.",
 };
 
 const articles = [
@@ -32,6 +32,18 @@ const articles = [
     title: "Why Does Running an Open Model Cost So Much?",
     subtitle: "What we learned about GPU economics, CPU hosting, hosted inference, and why RunPod was a reasonable first choice for Pegas — even though it was not the final infrastructure answer.",
   },
+  {
+    href: "/blog/pegas-serverless-gpu-modal-scale-to-zero",
+    label: "Article 5",
+    title: "The Day Pegas Stopped Needing a GPU Babysitter",
+    subtitle: "How request-driven serverless inference, scale-to-zero, and a stable Modal endpoint changed the operating model of Pegas.",
+  },
+  {
+    href: "/blog/pegas-multi-agent-request-desk",
+    label: "Article 6 · Latest",
+    title: "From One Model Call to a Multi-Agent System: How Pegas Learned to Route Work",
+    subtitle: "How Pegas became a visible Request Desk with specialized agents, conditional privacy review, bounded correction loops, and inspectable handoffs.",
+  },
 ];
 
 export default function BlogPage() {
@@ -43,7 +55,7 @@ export default function BlogPage() {
           <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-blue-700">Field notes · October 2026</span>
           <h1 className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-6xl">How the proof was built.</h1>
           <p className="mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
-            Practical field notes from building, breaking, and operating a self-hosted open-model demo.
+            Practical field notes from building, breaking, operating, and evolving a self-hosted open-model system.
           </p>
         </section>
 
