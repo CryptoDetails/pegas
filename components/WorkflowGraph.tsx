@@ -10,18 +10,19 @@ export type HandoffPulse = {
 
 export function WorkflowGraph({ states, selected, pulse, manual }: { states: GraphStates; selected: "technical" | "business" | "finance" | null; pulse: HandoffPulse; manual: boolean; }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 card-shadow">
+    <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 card-shadow">
       <div className="flex items-center justify-between gap-3">
         <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Live workflow</p><h2 className="mt-1 text-lg font-semibold text-slate-950">Real backend transitions</h2></div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">No staged timers</span>
+        <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">No staged timers</span>
       </div>
-      <div className="mt-7 overflow-x-auto pb-2">
-        <div className="mx-auto grid min-w-[860px] grid-cols-[120px_80px_120px_80px_300px_80px_120px] items-center gap-0">
+
+      <div className="mt-7 overflow-x-auto pb-2 sm:overflow-x-visible">
+        <div className="mx-auto grid w-full min-w-[620px] grid-cols-[minmax(0,1fr)_minmax(20px,0.42fr)_minmax(0,0.92fr)_minmax(20px,0.42fr)_minmax(0,2.35fr)_minmax(20px,0.42fr)_minmax(0,1fr)] items-center gap-0 sm:min-w-0">
           <Node label="Intake" state={states.intake} />
           <Edge active={states.privacy !== "idle"} pulse={pulse?.edge === "intake-privacy" ? pulse : null} />
           <Node label="Privacy" state={states.privacy} />
           <Edge active={Boolean(selected) && (states.privacy === "completed" || states.privacy === "skipped")} pulse={pulse?.edge === "privacy-department" || pulse?.edge === "intake-department" ? pulse : null} />
-          <div className="grid gap-3">
+          <div className="min-w-0 grid gap-3">
             <Node label="Technical" state={states.technical} compact selected={selected === "technical"} />
             <Node label="Business" state={states.business} compact selected={selected === "business"} />
             <Node label="Finance" state={states.finance} compact selected={selected === "finance"} />
@@ -45,9 +46,9 @@ function Node({ label, state, compact = false, selected = false }: { label: stri
   };
   const selectedClass = selected && state !== "running" ? "ring-2 ring-[var(--pegas-border)] ring-offset-2" : "";
   const stateLabel = state === "skipped" && label === "Privacy" ? "not needed" : state;
-  return <div className={`rounded-2xl border px-3 text-center font-semibold transition ${compact ? "py-3 text-sm" : "py-5 text-sm"} ${classes[state]} ${selectedClass}`}><span>{label}</span><span className="mt-1 block text-[10px] font-bold uppercase tracking-widest opacity-70">{stateLabel}</span></div>;
+  return <div className={`min-w-0 rounded-2xl border px-2 text-center font-semibold transition sm:px-3 ${compact ? "py-3 text-xs sm:text-sm" : "py-5 text-xs sm:text-sm"} ${classes[state]} ${selectedClass}`}><span className="block truncate">{label}</span><span className="mt-1 block truncate text-[9px] font-bold uppercase tracking-wider opacity-70 sm:text-[10px] sm:tracking-widest">{stateLabel}</span></div>;
 }
 
 function Edge({ active, pulse }: { active: boolean; pulse: HandoffPulse }) {
-  return <div className="relative mx-2 h-1 rounded-full bg-slate-200"><div className={`absolute inset-0 rounded-full transition ${active ? "pegas-gradient-fill" : "bg-transparent"}`} />{active && pulse && <span key={pulse.key} className={`${pulse.direction === "reverse" ? "handoff-pulse-reverse" : "handoff-pulse"} absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-[var(--pegas-cyan)] shadow-[0_0_18px_rgba(24,208,255,0.8)]`} />}</div>;
+  return <div className="relative mx-1 h-1 rounded-full bg-slate-200 sm:mx-2"><div className={`absolute inset-0 rounded-full transition ${active ? "pegas-gradient-fill" : "bg-transparent"}`} />{active && pulse && <span key={pulse.key} className={`${pulse.direction === "reverse" ? "handoff-pulse-reverse" : "handoff-pulse"} absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-[var(--pegas-cyan)] shadow-[0_0_18px_rgba(24,208,255,0.8)]`} />}</div>;
 }
