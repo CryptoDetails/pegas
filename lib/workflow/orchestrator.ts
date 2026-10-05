@@ -8,10 +8,15 @@ import type { AgentId, Department, DepartmentProposal, FinalRequestCard, IntakeA
 const WORKFLOW_DEADLINE_MS = 180_000;
 const MODEL_ATTEMPT_MS = 120_000;
 const MAX_LLM_ATTEMPTS = 6;
-const REPAIR_INSTRUCTION = "Your previous response failed the required structured contract. Return only a corrected structured object. Preserve source facts exactly; evidence must be exact substrings of sanitized_request.";
+const REPAIR_INSTRUCTION = "Your previous response failed the required structured contract. Return only the corrected schema object with every required key and no extra keys. Use empty strings for nullable model-facing fields when no value applies. Arrays may be empty. evidence may be [] and must never contain paraphrases; if used, every evidence item must be copied character-for-character from sanitized_request.";
 
 class WorkflowError extends Error {
-  constructor(public readonly code: "model_offline" | "model_timeout" | "invalid_model_output" | "workflow_deadline" | "call_budget" | "interrupted" | "model_error") { super(code); }
+  constructor(
+    public readonly code: "model_offline" | "model_timeout" | "invalid_model_output" | "workflow_deadline" | "call_budget" | "interrupted" | "model_error",
+    public readonly backendResponseReceived = false,
+  ) {
+    super(code);
+  }
 }
 
 function safeErrorPayload(error: unknown) {
@@ -19,13 +24,18 @@ function safeErrorPayload(error: unknown) {
   const messages: Record<string, string> = {
     model_offline: "The model is currently unreachable.",
     model_timeout: "The model did not complete the request within the allowed time.",
-    invalid_model_output: "An agent returned an invalid structured response after one repair attempt.",
+    invalid_model_output: "The model backend responded, but the agent output still failed the structured contract after one repair attempt.",
     workflow_deadline: "The workflow reached its execution deadline.",
     call_budget: "The workflow reached its model-call budget.",
     interrupted: "The workflow was interrupted before completion.",
     model_error: "The workflow could not complete safely because of a model error.",
   };
-  return { code, message: messages[code] ?? messages.model_error };
+  return {
+    code,
+    message: messages[code] ?? messages.model_error,
+    backend_response_received:
+      error instanceof WorkflowError ? error.backendResponseReceived : false,
+  };
 }
 
 function departmentAgentId(department: Department): AgentId {
@@ -71,10 +81,10 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       } catch (error) {
         if (error instanceof StructuredModelError && error.code === "INVALID_OUTPUT" && !repaired) { repaired = true; continue; }
         if (error instanceof StructuredModelError) {
-          if (error.code === "INVALID_OUTPUT") throw new WorkflowError("invalid_model_output");
-          if (error.code === "MODEL_OFFLINE") throw new WorkflowError("model_offline");
-          if (error.code === "MODEL_TIMEOUT") throw new WorkflowError("model_timeout");
-          throw new WorkflowError("model_error");
+          if (error.code === "INVALID_OUTPUT") throw new WorkflowError("invalid_model_output", error.backendResponseReceived);
+          if (error.code === "MODEL_OFFLINE") throw new WorkflowError("model_offline", error.backendResponseReceived);
+          if (error.code === "MODEL_TIMEOUT") throw new WorkflowError("model_timeout", error.backendResponseReceived);
+          throw new WorkflowError("model_error", error.backendResponseReceived);
         }
         throw error;
       }

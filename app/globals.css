@@ -137,3 +137,38 @@ select {
   to { transform: translate(74px, -50%); opacity: 0; }
 }
 .handoff-pulse { animation: handoff-travel 700ms ease-out both; }
+
+.pegas-primary-button {
+  background-image: var(--pegas-gradient);
+  transition: transform 140ms ease, filter 140ms ease, opacity 140ms ease, box-shadow 140ms ease;
+}
+
+.pegas-primary-button:hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+.pegas-primary-button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.995);
+}
+
+.pegas-primary-button:disabled {
+  opacity: 0.78;
+}
+
+.pegas-gradient-fill {
+  background-image: var(--pegas-gradient);
+}
+
+.pegas-spinner {
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #ffffff;
+  border-radius: 9999px;
+  animation: pegas-spin 700ms linear infinite;
+}
+
+@keyframes pegas-spin {
+  to { transform: rotate(360deg); }
+}

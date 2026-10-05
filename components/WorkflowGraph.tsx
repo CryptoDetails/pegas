@@ -39,5 +39,5 @@ function Node({ label, state, compact=false }: { label:string; state:NodeState; 
 }
 
 function Edge({ active, pulseKey }: { active:boolean; pulseKey:number }) {
-  return <div className="relative mx-2 h-1 rounded-full bg-slate-200"><div className={`absolute inset-0 rounded-full transition ${active?"bg-[var(--pegas-gradient)]":"bg-transparent"}`} />{active && pulseKey>0 && <span key={pulseKey} className="handoff-pulse absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-[var(--pegas-cyan)] shadow-[0_0_18px_rgba(24,208,255,0.8)]" />}</div>;
+  return <div className="relative mx-2 h-1 rounded-full bg-slate-200"><div className={`absolute inset-0 rounded-full transition ${active?"pegas-gradient-fill":"bg-transparent"}`} />{active && pulseKey>0 && <span key={pulseKey} className="handoff-pulse absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-[var(--pegas-cyan)] shadow-[0_0_18px_rgba(24,208,255,0.8)]" />}</div>;
 }
