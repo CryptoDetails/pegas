@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:phase2": "node --experimental-strip-types scripts/phase2-correction-tests.ts"
   },
   "dependencies": {
     "next": "16.3.8",

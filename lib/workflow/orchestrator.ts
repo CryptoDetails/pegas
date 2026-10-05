@@ -1,13 +1,38 @@
 import { runStructuredModel, StructuredModelError } from "../ollama";
+import { decideReviewPath } from "./correction";
 import { createEventFactory, type EventEmitter } from "./events";
-import { BUSINESS_SYSTEM_PROMPT, FINANCE_SYSTEM_PROMPT, INTAKE_SYSTEM_PROMPT, REVIEWER_SYSTEM_PROMPT, TECHNICAL_SYSTEM_PROMPT, wrapAgentInput } from "./prompts";
-import { departmentSchema, intakeSchema, reviewSchema, validateDepartment, validateIntake, validateReview, type ValidationResult } from "./schemas";
+import {
+  BUSINESS_SYSTEM_PROMPT,
+  departmentRevisionPrompt,
+  FINANCE_SYSTEM_PROMPT,
+  INTAKE_SYSTEM_PROMPT,
+  REVIEWER_SYSTEM_PROMPT,
+  TECHNICAL_SYSTEM_PROMPT,
+  wrapAgentInput,
+} from "./prompts";
+import {
+  departmentSchema,
+  intakeSchema,
+  reviewSchema,
+  validateDepartment,
+  validateIntake,
+  validateReview,
+  type ValidationResult,
+} from "./schemas";
 import { sanitizeRequest } from "./sanitize";
-import type { AgentId, Department, DepartmentProposal, FinalRequestCard, IntakeAssessment, ReviewDecision, WorkflowEvent } from "./types";
+import type {
+  AgentId,
+  Department,
+  DepartmentProposal,
+  FinalRequestCard,
+  IntakeAssessment,
+  ReviewDecision,
+  WorkflowEvent,
+} from "./types";
 
 const WORKFLOW_DEADLINE_MS = 180_000;
 const MODEL_ATTEMPT_MS = 120_000;
-const MAX_LLM_ATTEMPTS = 6;
+const MAX_LLM_ATTEMPTS = 10;
 const REPAIR_INSTRUCTION = "Your previous response failed the required structured contract. Return only the corrected schema object with every required key and no extra keys. Use empty strings for nullable model-facing fields when no value applies. Arrays may be empty. evidence may be [] and must never contain paraphrases; if used, every evidence item must be copied character-for-character from sanitized_request.";
 
 class WorkflowError extends Error {
@@ -34,18 +59,21 @@ function safeErrorPayload(error: unknown) {
   return {
     code,
     message: messages[code] ?? messages.model_error,
-    backend_response_received:
-      error instanceof WorkflowError ? error.backendResponseReceived : false,
-    validation_detail:
-      error instanceof WorkflowError ? error.validationDetail : null,
+    backend_response_received: error instanceof WorkflowError ? error.backendResponseReceived : false,
+    validation_detail: error instanceof WorkflowError ? error.validationDetail : null,
   };
 }
 
 function departmentAgentId(department: Department): AgentId {
   return `${department}_agent` as AgentId;
 }
+
 function departmentPrompt(department: Department) {
-  return department === "technical" ? TECHNICAL_SYSTEM_PROMPT : department === "business" ? BUSINESS_SYSTEM_PROMPT : FINANCE_SYSTEM_PROMPT;
+  return department === "technical"
+    ? TECHNICAL_SYSTEM_PROMPT
+    : department === "business"
+      ? BUSINESS_SYSTEM_PROMPT
+      : FINANCE_SYSTEM_PROMPT;
 }
 
 function isClearlyUnderspecifiedRequest(message: string) {
@@ -65,13 +93,20 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     const event = eventFactory(type, stepId, agentId, payload);
     if (event) emitExternal(event);
   };
+
   const remainingMs = () => WORKFLOW_DEADLINE_MS - (Date.now() - startedAt);
   const assertRunActive = () => {
     if (signal?.aborted) throw new WorkflowError("interrupted");
     if (remainingMs() <= 0) throw new WorkflowError("workflow_deadline");
   };
 
-  async function callAgent<T>(args: { agentId: AgentId; stepId: string; systemPrompt: string; context: Record<string, unknown>; schema: unknown; validator: (v: unknown) => ValidationResult<T>; }) {
+  async function callAgent<T>(args: {
+    agentId: AgentId;
+    systemPrompt: string;
+    context: Record<string, unknown>;
+    schema: unknown;
+    validator: (v: unknown) => ValidationResult<T>;
+  }) {
     let repaired = false;
     let repairReason = "The response did not match the required contract.";
 
@@ -113,11 +148,7 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
         }
         if (error instanceof StructuredModelError) {
           if (error.code === "INVALID_OUTPUT") {
-            throw new WorkflowError(
-              "invalid_model_output",
-              error.backendResponseReceived,
-              `${args.agentId}: ${lastValidationReason}`,
-            );
+            throw new WorkflowError("invalid_model_output", error.backendResponseReceived, `${args.agentId}: ${lastValidationReason}`);
           }
           if (error.code === "MODEL_OFFLINE") throw new WorkflowError("model_offline", error.backendResponseReceived);
           if (error.code === "MODEL_TIMEOUT") throw new WorkflowError("model_timeout", error.backendResponseReceived);
@@ -128,25 +159,118 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     }
   }
 
+  async function callDepartment(
+    department: Department,
+    context: Record<string, unknown>,
+    revision: boolean,
+  ): Promise<DepartmentProposal> {
+    const agentId = departmentAgentId(department);
+    emit("agent_started", department, agentId, { role: department, correction_cycle: revision ? 1 : 0 });
+    try {
+      const proposal = await callAgent({
+        agentId,
+        systemPrompt: revision ? departmentRevisionPrompt(department) : departmentPrompt(department),
+        context,
+        schema: departmentSchema,
+        validator: (v) => validateDepartment(v, context.sanitized_request as string, department),
+      });
+      emit("agent_completed", department, agentId, proposal);
+      return proposal;
+    } catch (error) {
+      emit("agent_failed", department, agentId, safeErrorPayload(error));
+      throw error;
+    }
+  }
+
+  async function callReviewer(
+    context: Record<string, unknown>,
+    pass: 1 | 2,
+  ): Promise<ReviewDecision> {
+    emit("agent_started", "reviewer", "reviewer_agent", { role: "Reviewer", pass });
+    try {
+      const review = await callAgent({
+        agentId: "reviewer_agent",
+        systemPrompt: REVIEWER_SYSTEM_PROMPT,
+        context,
+        schema: reviewSchema,
+        validator: (v) => validateReview(v, context.sanitized_request as string),
+      });
+      emit("review_completed", "reviewer", "reviewer_agent", { ...review, pass });
+      return review;
+    } catch (error) {
+      emit("agent_failed", "reviewer", "reviewer_agent", safeErrorPayload(error));
+      throw error;
+    }
+  }
+
   function manualCard(intake: IntakeAssessment, reason: string): FinalRequestCard {
-    return { run_id: runId, outcome: "manual_review", department: intake.department_candidate === "unknown" ? null : intake.department_candidate, priority: intake.priority, confidentiality: intake.confidentiality, summary: intake.summary, department_note: null, next_action: null, route_explanation: reason, review_status: "manual_review", clarification_question: intake.clarification_question };
+    const department = intake.department_candidate === "unknown" ? null : intake.department_candidate;
+    return {
+      run_id: runId,
+      outcome: "manual_review",
+      department,
+      initial_department: department,
+      revision_count: 0,
+      priority: intake.priority,
+      confidentiality: intake.confidentiality,
+      summary: intake.summary,
+      department_note: null,
+      next_action: null,
+      route_explanation: reason,
+      review_status: "manual_review",
+      clarification_question: intake.clarification_question,
+    };
+  }
+
+  function proposalCard(args: {
+    outcome: FinalRequestCard["outcome"];
+    proposal: DepartmentProposal;
+    initialDepartment: Department;
+    revisionCount: 0 | 1;
+    routeExplanation: string;
+    reviewStatus: string;
+    clarificationQuestion?: string | null;
+  }): FinalRequestCard {
+    return {
+      run_id: runId,
+      outcome: args.outcome,
+      department: args.proposal.department,
+      initial_department: args.initialDepartment,
+      revision_count: args.revisionCount,
+      priority: args.proposal.priority,
+      confidentiality: args.proposal.confidentiality,
+      summary: args.proposal.summary,
+      department_note: args.proposal.department_note,
+      next_action: args.outcome === "needs_information" ? null : args.proposal.next_action,
+      route_explanation: args.routeExplanation,
+      review_status: args.reviewStatus,
+      clarification_question: args.clarificationQuestion ?? null,
+    };
   }
 
   try {
     const sanitized = sanitizeRequest(rawMessage);
     emit("workflow_started", "workflow", null, { status: "running" });
-    emit("input_checked", "input", null, { character_count: sanitized.sanitized.length, sensitivity_flag_types: sanitized.flagTypes, confidentiality_floor: sanitized.confidentialityFloor });
+    emit("input_checked", "input", null, {
+      character_count: sanitized.sanitized.length,
+      sensitivity_flag_types: sanitized.flagTypes,
+      confidentiality_floor: sanitized.confidentialityFloor,
+    });
 
     if (sanitized.flagTypes.length > 0) {
-      const reason = "Credential-like material was detected and redacted. Phase 1 stops this request for manual review before any model call.";
+      const reason = "Credential-like material was detected and redacted. This request stops for manual review before any model call.";
       emit("routing_decision", "routing", null, { decision: "manual_review", reason, sensitivity_flag_types: sanitized.flagTypes });
       emit("agent_skipped", "intake", "intake_agent", { reason: "Sensitive input was stopped before model processing." });
-      for (const dept of ["technical", "business", "finance"] as const) emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Sensitive request stopped before department routing." });
+      for (const dept of ["technical", "business", "finance"] as const) {
+        emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Sensitive request stopped before department routing." });
+      }
       emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "No department proposal was created." });
       const card: FinalRequestCard = {
         run_id: runId,
         outcome: "manual_review",
         department: null,
+        initial_department: null,
+        revision_count: 0,
         priority: null,
         confidentiality: "restricted",
         summary: "Sensitive request detected before model processing.",
@@ -161,20 +285,31 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     }
 
     emit("agent_started", "intake", "intake_agent", { role: "Intake" });
-    const intakeContext = { sanitized_request: sanitized.sanitized, confidentiality_floor: sanitized.confidentialityFloor };
+    const intakeContext = {
+      sanitized_request: sanitized.sanitized,
+      confidentiality_floor: sanitized.confidentialityFloor,
+    };
     let intake: IntakeAssessment;
     try {
-      intake = await callAgent({ agentId: "intake_agent", stepId: "intake", systemPrompt: INTAKE_SYSTEM_PROMPT, context: intakeContext, schema: intakeSchema, validator: (v) => validateIntake(v, sanitized.sanitized) });
+      intake = await callAgent({
+        agentId: "intake_agent",
+        systemPrompt: INTAKE_SYSTEM_PROMPT,
+        context: intakeContext,
+        schema: intakeSchema,
+        validator: (v) => validateIntake(v, sanitized.sanitized),
+      });
     } catch (error) {
-      emit("agent_failed", "intake", "intake_agent", safeErrorPayload(error)); throw error;
+      emit("agent_failed", "intake", "intake_agent", safeErrorPayload(error));
+      throw error;
     }
     emit("agent_completed", "intake", "intake_agent", intake);
 
-    const sensitiveStop = sanitized.flagTypes.length > 0 || intake.privacy_review_needed || intake.confidentiality !== "internal";
-    if (sensitiveStop) {
-      const reason = "Phase 1 does not auto-forward sensitive or restricted requests to a department.";
+    if (intake.privacy_review_needed || intake.confidentiality !== "internal") {
+      const reason = "Sensitive or restricted requests are not auto-forwarded to a department.";
       emit("routing_decision", "routing", "intake_agent", { decision: "manual_review", reason });
-      for (const dept of ["technical", "business", "finance"] as const) emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Sensitive request stopped before department routing." });
+      for (const dept of ["technical", "business", "finance"] as const) {
+        emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Sensitive request stopped before department routing." });
+      }
       emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "No department proposal was created." });
       emit("workflow_completed", "workflow", null, manualCard(intake, reason));
       return;
@@ -189,18 +324,42 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
         ? "The request is too vague to route safely from the available information."
         : intake.route_reason;
       emit("routing_decision", "routing", "intake_agent", { decision: "needs_information", reason: needsInfoReason });
-      for (const dept of ["technical", "business", "finance"] as const) emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Routing needs clarification." });
+      for (const dept of ["technical", "business", "finance"] as const) {
+        emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Routing needs clarification." });
+      }
       emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "No department proposal was created." });
-      const card: FinalRequestCard = { run_id: runId, outcome: "needs_information", department: null, priority: intake.priority, confidentiality: intake.confidentiality, summary: intake.summary, department_note: null, next_action: null, route_explanation: needsInfoReason, review_status: "not_run", clarification_question: question };
+      const card: FinalRequestCard = {
+        run_id: runId,
+        outcome: "needs_information",
+        department: null,
+        initial_department: null,
+        revision_count: 0,
+        priority: intake.priority,
+        confidentiality: intake.confidentiality,
+        summary: intake.summary,
+        department_note: null,
+        next_action: null,
+        route_explanation: needsInfoReason,
+        review_status: "not_run",
+        clarification_question: question,
+      };
       emit("workflow_completed", "workflow", null, card);
       return;
     }
 
-    const selected = intake.department_candidate;
-    emit("routing_decision", "routing", "intake_agent", { decision: "route", department: selected, reason: intake.route_reason });
-    for (const dept of ["technical", "business", "finance"] as const) if (dept !== selected) emit("agent_skipped", dept, departmentAgentId(dept), { reason: `Intake selected ${selected}.` });
+    const initialDepartment = intake.department_candidate;
+    emit("routing_decision", "routing", "intake_agent", {
+      decision: "route",
+      department: initialDepartment,
+      reason: intake.route_reason,
+    });
+    for (const dept of ["technical", "business", "finance"] as const) {
+      if (dept !== initialDepartment) {
+        emit("agent_skipped", dept, departmentAgentId(dept), { reason: `Intake selected ${initialDepartment}.` });
+      }
+    }
 
-    const departmentContext: Record<string, unknown> = {
+    const firstDepartmentContext: Record<string, unknown> = {
       request_summary: intake.summary,
       request_type: intake.request_type,
       priority: intake.priority,
@@ -211,52 +370,244 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       sanitized_request: sanitized.sanitized,
     };
     emit("handoff_created", "handoff-intake-department", "intake_agent", {
-      handoff_id: crypto.randomUUID(), run_id: runId, source_step_id: "intake", target_step_id: selected, source_agent_id: "intake_agent", target_agent_id: departmentAgentId(selected), reason: intake.route_reason, forwarded_context: departmentContext, withheld_field_names: ["raw_request"], created_at: new Date().toISOString(),
+      handoff_id: crypto.randomUUID(),
+      run_id: runId,
+      source_step_id: "intake",
+      target_step_id: initialDepartment,
+      source_agent_id: "intake_agent",
+      target_agent_id: departmentAgentId(initialDepartment),
+      reason: intake.route_reason,
+      forwarded_context: firstDepartmentContext,
+      withheld_field_names: ["raw_request"],
+      created_at: new Date().toISOString(),
     });
 
-    const deptAgent = departmentAgentId(selected);
-    emit("agent_started", selected, deptAgent, { role: selected });
-    let proposal: DepartmentProposal;
-    try {
-      proposal = await callAgent({ agentId: deptAgent, stepId: selected, systemPrompt: departmentPrompt(selected), context: departmentContext, schema: departmentSchema, validator: (v) => validateDepartment(v, sanitized.sanitized, selected) });
-    } catch (error) {
-      emit("agent_failed", selected, deptAgent, safeErrorPayload(error)); throw error;
-    }
-    emit("agent_completed", selected, deptAgent, proposal);
+    let currentDepartment = initialDepartment;
+    let proposal = await callDepartment(currentDepartment, firstDepartmentContext, false);
 
-    const reviewerContext: Record<string, unknown> = { sanitized_request: sanitized.sanitized, intake, department_proposal: proposal };
-    emit("handoff_created", "handoff-department-reviewer", deptAgent, {
-      handoff_id: crypto.randomUUID(), run_id: runId, source_step_id: selected, target_step_id: "reviewer", source_agent_id: deptAgent, target_agent_id: "reviewer_agent", reason: "Review selected department proposal against source request and routing constraints.", forwarded_context: reviewerContext, withheld_field_names: ["raw_request"], created_at: new Date().toISOString(),
-    });
-    emit("agent_started", "reviewer", "reviewer_agent", { role: "Reviewer" });
-    let review: ReviewDecision;
-    try {
-      review = await callAgent({ agentId: "reviewer_agent", stepId: "reviewer", systemPrompt: REVIEWER_SYSTEM_PROMPT, context: reviewerContext, schema: reviewSchema, validator: (v) => validateReview(v, sanitized.sanitized) });
-    } catch (error) {
-      emit("agent_failed", "reviewer", "reviewer_agent", safeErrorPayload(error)); throw error;
-    }
-    emit("review_completed", "reviewer", "reviewer_agent", review);
-
-    const sensitivityEscalated = proposal.confidentiality !== "internal";
-    const rerouteRequested = review.correction_target !== null && review.correction_target !== selected;
-    if (review.decision === "approved" && !sensitivityEscalated && !rerouteRequested) {
-      emit("policy_checked", "policy", null, { passed: true, checks: ["single_department", "internal_confidentiality", "reviewer_approved"] });
-      const card: FinalRequestCard = { run_id: runId, outcome: "routed_demo", department: selected, priority: proposal.priority, confidentiality: proposal.confidentiality, summary: proposal.summary, department_note: proposal.department_note, next_action: proposal.next_action, route_explanation: intake.route_reason, review_status: "approved", clarification_question: null };
-      emit("workflow_completed", "workflow", null, card);
+    if (proposal.confidentiality !== "internal") {
+      const reason = "Department proposal raised confidentiality above internal, so manual review is required before Reviewer correction logic.";
+      emit("policy_checked", "policy", null, { passed: false, reason });
+      emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "Sensitivity policy stopped the workflow before review." });
+      emit("workflow_completed", "workflow", null, proposalCard({
+        outcome: "manual_review",
+        proposal,
+        initialDepartment,
+        revisionCount: 0,
+        routeExplanation: reason,
+        reviewStatus: "manual_review",
+      }));
       return;
     }
 
-    if (review.decision === "needs_information") {
-      const question = review.correction_request ?? proposal.open_questions[0] ?? intake.clarification_question ?? "What additional information should the team use to complete this request?";
-      const card: FinalRequestCard = { run_id: runId, outcome: "needs_information", department: selected, priority: proposal.priority, confidentiality: proposal.confidentiality, summary: proposal.summary, department_note: proposal.department_note, next_action: null, route_explanation: intake.route_reason, review_status: "needs_information", clarification_question: question };
-      emit("workflow_completed", "workflow", null, card);
+    const firstReviewerContext: Record<string, unknown> = {
+      sanitized_request: sanitized.sanitized,
+      intake,
+      department_proposal: proposal,
+      correction_cycle: 0,
+    };
+    emit("handoff_created", "handoff-department-reviewer", departmentAgentId(currentDepartment), {
+      handoff_id: crypto.randomUUID(),
+      run_id: runId,
+      source_step_id: currentDepartment,
+      target_step_id: "reviewer",
+      source_agent_id: departmentAgentId(currentDepartment),
+      target_agent_id: "reviewer_agent",
+      reason: "Review selected department proposal against source request and routing constraints.",
+      forwarded_context: firstReviewerContext,
+      withheld_field_names: ["raw_request"],
+      created_at: new Date().toISOString(),
+    });
+
+    const review1 = await callReviewer(firstReviewerContext, 1);
+    const firstDecision = decideReviewPath({
+      review: review1,
+      currentDepartment,
+      proposal,
+      correctionCycleUsed: false,
+    });
+
+    if (firstDecision.action === "approve") {
+      emit("policy_checked", "policy", null, {
+        passed: true,
+        checks: ["single_department", "internal_confidentiality", "reviewer_approved"],
+      });
+      emit("workflow_completed", "workflow", null, proposalCard({
+        outcome: "routed_demo",
+        proposal,
+        initialDepartment,
+        revisionCount: 0,
+        routeExplanation: intake.route_reason,
+        reviewStatus: "approved",
+      }));
       return;
     }
 
-    const manualReason = sensitivityEscalated ? "Department proposal raised confidentiality above internal." : rerouteRequested ? "Reviewer requested a different department; rerouting loops are reserved for Phase 2." : review.reason;
-    emit("policy_checked", "policy", null, { passed: false, reason: manualReason });
-    const card: FinalRequestCard = { run_id: runId, outcome: "manual_review", department: selected, priority: proposal.priority, confidentiality: proposal.confidentiality, summary: proposal.summary, department_note: proposal.department_note, next_action: proposal.next_action, route_explanation: manualReason, review_status: review.decision, clarification_question: review.correction_request };
-    emit("workflow_completed", "workflow", null, card);
+    if (firstDecision.action === "needs_information") {
+      const question = review1.correction_request ?? proposal.open_questions[0] ?? intake.clarification_question ?? "What additional information should the team use to complete this request?";
+      emit("workflow_completed", "workflow", null, proposalCard({
+        outcome: "needs_information",
+        proposal,
+        initialDepartment,
+        revisionCount: 0,
+        routeExplanation: intake.route_reason,
+        reviewStatus: "needs_information",
+        clarificationQuestion: question,
+      }));
+      return;
+    }
+
+    if (firstDecision.action === "manual_review") {
+      emit("policy_checked", "policy", null, { passed: false, reason: firstDecision.reason });
+      emit("workflow_completed", "workflow", null, proposalCard({
+        outcome: "manual_review",
+        proposal,
+        initialDepartment,
+        revisionCount: 0,
+        routeExplanation: firstDecision.reason,
+        reviewStatus: review1.decision,
+        clarificationQuestion: review1.correction_request,
+      }));
+      return;
+    }
+
+    const mode = firstDecision.action === "reroute" ? "reroute" : "same_department";
+    const targetDepartment = firstDecision.target_department;
+    emit("revision_requested", "correction", "reviewer_agent", {
+      cycle: 1,
+      mode,
+      from_department: currentDepartment,
+      target_department: targetDepartment,
+      reason: review1.reason,
+      issues: review1.issues,
+    });
+
+    const correctionContext: Record<string, unknown> = {
+      sanitized_request: sanitized.sanitized,
+      intake,
+      previous_department_proposal: proposal,
+      reviewer_issues: review1.issues,
+      reviewer_reason: review1.reason,
+      correction_request: review1.correction_request,
+      target_department: targetDepartment,
+      correction_cycle: 1,
+    };
+
+    emit("correction_started", "correction", departmentAgentId(targetDepartment), {
+      cycle: 1,
+      mode,
+      from_department: currentDepartment,
+      target_department: targetDepartment,
+    });
+    emit("handoff_created", "handoff-reviewer-department", "reviewer_agent", {
+      handoff_id: crypto.randomUUID(),
+      run_id: runId,
+      source_step_id: "reviewer",
+      target_step_id: targetDepartment,
+      source_agent_id: "reviewer_agent",
+      target_agent_id: departmentAgentId(targetDepartment),
+      reason: review1.correction_request ?? review1.reason,
+      forwarded_context: correctionContext,
+      withheld_field_names: ["raw_request"],
+      created_at: new Date().toISOString(),
+    });
+
+    currentDepartment = targetDepartment;
+    proposal = await callDepartment(currentDepartment, correctionContext, true);
+    emit("correction_completed", "correction", departmentAgentId(currentDepartment), {
+      cycle: 1,
+      mode,
+      department: currentDepartment,
+    });
+
+    if (proposal.confidentiality !== "internal") {
+      const reason = "The corrected department proposal raised confidentiality above internal, so manual review is required.";
+      emit("policy_checked", "policy", null, { passed: false, reason });
+      emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "Sensitivity policy stopped Reviewer #2." });
+      emit("workflow_completed", "workflow", null, proposalCard({
+        outcome: "manual_review",
+        proposal,
+        initialDepartment,
+        revisionCount: 1,
+        routeExplanation: reason,
+        reviewStatus: "manual_review_after_correction",
+      }));
+      return;
+    }
+
+    const secondReviewerContext: Record<string, unknown> = {
+      sanitized_request: sanitized.sanitized,
+      intake,
+      department_proposal: proposal,
+      previous_department_proposal: correctionContext.previous_department_proposal,
+      reviewer_1: review1,
+      correction_mode: mode,
+      correction_cycle: 1,
+    };
+    emit("handoff_created", "handoff-department-reviewer-2", departmentAgentId(currentDepartment), {
+      handoff_id: crypto.randomUUID(),
+      run_id: runId,
+      source_step_id: currentDepartment,
+      target_step_id: "reviewer",
+      source_agent_id: departmentAgentId(currentDepartment),
+      target_agent_id: "reviewer_agent",
+      reason: "Review the corrected proposal. This second reviewer pass is terminal.",
+      forwarded_context: secondReviewerContext,
+      withheld_field_names: ["raw_request"],
+      created_at: new Date().toISOString(),
+    });
+
+    const review2 = await callReviewer(secondReviewerContext, 2);
+    const secondDecision = decideReviewPath({
+      review: review2,
+      currentDepartment,
+      proposal,
+      correctionCycleUsed: true,
+    });
+
+    if (secondDecision.action === "approve") {
+      emit("policy_checked", "policy", null, {
+        passed: true,
+        checks: ["single_correction_cycle", "internal_confidentiality", "reviewer_2_approved"],
+      });
+      emit("workflow_completed", "workflow", null, proposalCard({
+        outcome: "routed_demo",
+        proposal,
+        initialDepartment,
+        revisionCount: 1,
+        routeExplanation: intake.route_reason,
+        reviewStatus: mode === "reroute" ? "approved_after_reroute" : "approved_after_revision",
+      }));
+      return;
+    }
+
+    if (secondDecision.action === "needs_information") {
+      const question = review2.correction_request ?? proposal.open_questions[0] ?? "What additional information is needed to complete the corrected request?";
+      emit("workflow_completed", "workflow", null, proposalCard({
+        outcome: "needs_information",
+        proposal,
+        initialDepartment,
+        revisionCount: 1,
+        routeExplanation: "Reviewer #2 requested more information after the single correction cycle.",
+        reviewStatus: "needs_information_after_correction",
+        clarificationQuestion: question,
+      }));
+      return;
+    }
+
+    const terminalReason = secondDecision.action === "manual_review"
+      ? secondDecision.reason
+      : "The single reviewer correction cycle was exhausted.";
+    emit("policy_checked", "policy", null, { passed: false, reason: terminalReason });
+    emit("workflow_completed", "workflow", null, proposalCard({
+      outcome: "manual_review",
+      proposal,
+      initialDepartment,
+      revisionCount: 1,
+      routeExplanation: terminalReason,
+      reviewStatus: "manual_review_after_correction",
+      clarificationQuestion: review2.correction_request,
+    }));
   } catch (error) {
     emit("workflow_failed", "workflow", null, safeErrorPayload(error));
   }

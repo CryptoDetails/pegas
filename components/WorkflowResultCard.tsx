@@ -3,6 +3,8 @@ import type { FinalRequestCard } from "@/lib/workflow/types";
 export function WorkflowResultCard({ card }: { card: FinalRequestCard }) {
   const routed = card.outcome === "routed_demo";
   const needsInfo = card.outcome === "needs_information";
+  const correctionLabel = correctionSummary(card);
+
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-6 card-shadow">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -16,6 +18,13 @@ export function WorkflowResultCard({ card }: { card: FinalRequestCard }) {
           {card.outcome.replaceAll("_", " ")}
         </span>
       </div>
+
+      {correctionLabel && (
+        <div className="mt-5 inline-flex rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-800">
+          {correctionLabel}
+        </div>
+      )}
+
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <Fact label="Department" value={card.department ?? "Not selected"} />
         <Fact label="Priority" value={card.priority ?? "—"} />
@@ -28,6 +37,16 @@ export function WorkflowResultCard({ card }: { card: FinalRequestCard }) {
       {card.clarification_question && <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Clarification</p><p className="mt-2 text-sm font-medium text-amber-950">{card.clarification_question}</p></div>}
     </section>
   );
+}
+
+function correctionSummary(card: FinalRequestCard) {
+  if (card.revision_count !== 1 || !card.initial_department || !card.department) return null;
+  if (card.initial_department === card.department) return "Revised once";
+  return `Rerouted ${capitalize(card.initial_department)} → ${capitalize(card.department)}`;
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function Fact({ label, value }: { label: string; value: string }) {

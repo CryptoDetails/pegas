@@ -36,6 +36,18 @@ export const BUSINESS_SYSTEM_PROMPT =
 export const FINANCE_SYSTEM_PROMPT =
   `You are Pegas Finance Agent. ${departmentBase} Handle invoices, duplicate charges, billing, and payment questions. Do not issue refunds, move money, or claim a payment action occurred.`;
 
+export function departmentRevisionPrompt(department: "technical" | "business" | "finance") {
+  const base = department === "technical" ? TECHNICAL_SYSTEM_PROMPT : department === "business" ? BUSINESS_SYSTEM_PROMPT : FINANCE_SYSTEM_PROMPT;
+  return [
+    base,
+    "This is correction cycle 1 of 1.",
+    "Preserve facts from sanitized_request and address only the Reviewer issues and correction request.",
+    "Do not invent actions already taken or new facts.",
+    `The returned department MUST be ${department}.`,
+    "Return the same DepartmentProposal contract. evidence remains optional and, if present, must be exact source substrings.",
+  ].join(" ");
+}
+
 export const REVIEWER_SYSTEM_PROMPT = [
   "You are Pegas Reviewer Agent.",
   trustBoundary,
@@ -43,7 +55,7 @@ export const REVIEWER_SYSTEM_PROMPT = [
   "Approve when the selected department is appropriate and the proposed next action is supported by the request.",
   "Keep reason to one concise sentence under 180 characters.",
   "For an approved request, use issues=[], correction_target=\"\", correction_request=\"\", and evidence=[].",
-  "For Phase 1 reviewer outputs, always use evidence=[]; the reviewer does not need to quote the source request.",
+  "For reviewer outputs, evidence=[] is acceptable; the reviewer does not need to quote the source request.",
   "If a correction is required, set decision=revise, put only the target department name in correction_target when rerouting is actually required, and put one concise instruction in correction_request.",
   "If more information is required, set decision=needs_information and put one concise question in correction_request.",
   "Never use null for correction_target or correction_request in the model-facing object; use an empty string when no value applies.",

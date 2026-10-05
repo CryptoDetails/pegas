@@ -2,9 +2,14 @@
 
 import { useMemo, useRef, useState } from "react";
 import { AppHeader } from "./AppHeader";
-import { WorkflowGraph, type GraphStates, type NodeState } from "./WorkflowGraph";
+import {
+  WorkflowGraph,
+  type GraphStates,
+  type HandoffPulse,
+  type NodeState,
+} from "./WorkflowGraph";
 import { WorkflowResultCard } from "./WorkflowResultCard";
-import type { FinalRequestCard, WorkflowEvent } from "@/lib/workflow/types";
+import type { Department, FinalRequestCard, WorkflowEvent } from "@/lib/workflow/types";
 
 const presets = {
   Technical:
@@ -23,23 +28,29 @@ const initialStates: GraphStates = {
   reviewer: "idle",
 };
 
+function isDepartment(value: unknown): value is Department {
+  return value === "technical" || value === "business" || value === "finance";
+}
+
 export function RequestDeskWorkspace() {
   const [message, setMessage] = useState(presets.Technical);
   const [states, setStates] = useState<GraphStates>(initialStates);
-  const [selected, setSelected] = useState<"technical" | "business" | "finance" | null>(null);
+  const [selected, setSelected] = useState<Department | null>(null);
   const [card, setCard] = useState<FinalRequestCard | null>(null);
   const [status, setStatus] = useState<"idle" | "running" | "failed" | "interrupted">("idle");
   const [error, setError] = useState<string | null>(null);
   const [backendResponded, setBackendResponded] = useState(false);
   const [validationDetail, setValidationDetail] = useState<string | null>(null);
-  const [pulseKey, setPulseKey] = useState(0);
+  const [pulse, setPulse] = useState<HandoffPulse>(null);
+  const [pulseCounter, setPulseCounter] = useState(0);
   const [events, setEvents] = useState<WorkflowEvent[]>([]);
   const [manual, setManual] = useState(false);
+  const [revisionNotice, setRevisionNotice] = useState<string | null>(null);
   const seenIds = useRef(new Set<string>());
   const busy = status === "running";
 
   const compactEvents = useMemo(
-    () => events.filter((event) => event.type !== "heartbeat").slice(-8),
+    () => events.filter((event) => event.type !== "heartbeat").slice(-12),
     [events],
   );
 
@@ -57,6 +68,25 @@ export function RequestDeskWorkspace() {
     if (step in initialStates) {
       setStates((previous) => ({ ...previous, [step]: state }));
     }
+  }
+
+  function triggerPulse(event: WorkflowEvent) {
+    if (event.type !== "handoff_created" || typeof event.payload !== "object" || !event.payload) return;
+    const payload = event.payload as { source_step_id?: unknown; target_step_id?: unknown };
+    const source = payload.source_step_id;
+    const target = payload.target_step_id;
+
+    setPulseCounter((previous) => {
+      const key = previous + 1;
+      if (source === "intake" && isDepartment(target)) {
+        setPulse({ key, edge: "intake-department", direction: "forward" });
+      } else if (isDepartment(source) && target === "reviewer") {
+        setPulse({ key, edge: "department-reviewer", direction: "forward" });
+      } else if (source === "reviewer" && isDepartment(target)) {
+        setPulse({ key, edge: "department-reviewer", direction: "reverse" });
+      }
+      return key;
+    });
   }
 
   function applyEvent(event: WorkflowEvent) {
@@ -78,12 +108,26 @@ export function RequestDeskWorkspace() {
       "department" in event.payload
     ) {
       const department = (event.payload as { department?: unknown }).department;
-      if (department === "technical" || department === "business" || department === "finance") {
-        setSelected(department);
+      if (isDepartment(department)) setSelected(department);
+    }
+
+    if (event.type === "revision_requested" && typeof event.payload === "object" && event.payload) {
+      const payload = event.payload as {
+        mode?: unknown;
+        from_department?: unknown;
+        target_department?: unknown;
+      };
+      const from = payload.from_department;
+      const target = payload.target_department;
+      if (isDepartment(target)) setSelected(target);
+      if (payload.mode === "reroute" && isDepartment(from) && isDepartment(target)) {
+        setRevisionNotice(`Reviewer rerouted ${capitalize(from)} → ${capitalize(target)}`);
+      } else {
+        setRevisionNotice("Reviewer requested one revision");
       }
     }
 
-    if (event.type === "handoff_created") setPulseKey((key) => key + 1);
+    triggerPulse(event);
 
     if (event.type === "workflow_completed") {
       const next = event.payload as FinalRequestCard;
@@ -117,8 +161,10 @@ export function RequestDeskWorkspace() {
     setBackendResponded(false);
     setValidationDetail(null);
     setEvents([]);
-    setPulseKey(0);
+    setPulse(null);
+    setPulseCounter(0);
     setManual(false);
+    setRevisionNotice(null);
     setStatus("running");
 
     let terminal = false;
@@ -165,9 +211,7 @@ export function RequestDeskWorkspace() {
 
       if (!terminal) {
         setStatus("interrupted");
-        setError(
-          "The event stream ended before a terminal workflow event. This run was not treated as success.",
-        );
+        setError("The event stream ended before a terminal workflow event. This run was not treated as success.");
       }
     } catch (err) {
       setStatus("failed");
@@ -183,21 +227,18 @@ export function RequestDeskWorkspace() {
           <section>
             <span className="inline-flex items-center gap-2 rounded-full border border-[var(--pegas-border)] bg-white px-3 py-1.5 text-xs font-bold text-[var(--pegas-blue-dark)]">
               <span className="h-2 w-2 rounded-full bg-[var(--pegas-cyan)]" />
-              Request Desk · Phase 1
+              Request Desk · Phase 2
             </span>
 
             <h1 className="mt-5 max-w-2xl text-4xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-5xl">
               One request. Watch the agents work.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-slate-600">
-              A self-hosted open model classifies the request, selects exactly one specialist department,
-              then sends the proposal to a separate reviewer.
+              A self-hosted open model routes the request to a specialist, reviews the proposal, and can perform one real reviewer-requested correction or reroute.
             </p>
 
             <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 card-shadow">
-              <label htmlFor="request" className="text-sm font-semibold text-slate-900">
-                Request
-              </label>
+              <label htmlFor="request" className="text-sm font-semibold text-slate-900">Request</label>
               <textarea
                 id="request"
                 value={message}
@@ -227,8 +268,7 @@ export function RequestDeskWorkspace() {
               </div>
 
               <p className="mt-3 text-xs leading-5 text-slate-500">
-                The first run after idle can take around 90 seconds based on a prior observed run. Follow-up
-                calls are typically much faster, but startup time can vary.
+                The first run after idle can take around 90 seconds based on a prior observed run. Follow-up calls are typically much faster, but startup time can vary.
               </p>
 
               <button
@@ -248,16 +288,17 @@ export function RequestDeskWorkspace() {
                   <span>{liveLabel}</span>
                 </div>
               )}
+
+              {revisionNotice && (
+                <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs font-semibold text-violet-800">
+                  {revisionNotice}
+                </div>
+              )}
             </div>
           </section>
 
           <div className="space-y-6">
-            <WorkflowGraph
-              states={states}
-              selected={selected}
-              pulseKey={pulseKey}
-              manual={manual}
-            />
+            <WorkflowGraph states={states} selected={selected} pulse={pulse} manual={manual} />
 
             {(error || status === "interrupted") && (
               <div className="rounded-3xl border border-rose-200 bg-rose-50 p-5">
@@ -288,13 +329,8 @@ export function RequestDeskWorkspace() {
                 </div>
                 <div className="mt-4 space-y-2">
                   {compactEvents.map((event) => (
-                    <div
-                      key={event.event_id}
-                      className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2 text-xs"
-                    >
-                      <span className="font-semibold text-slate-700">
-                        {event.type.replaceAll("_", " ")}
-                      </span>
+                    <div key={event.event_id} className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                      <span className="font-semibold text-slate-700">{event.type.replaceAll("_", " ")}</span>
                       <span className="text-slate-400">{event.agent_id ?? event.step_id}</span>
                     </div>
                   ))}
@@ -306,4 +342,8 @@ export function RequestDeskWorkspace() {
       </main>
     </div>
   );
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

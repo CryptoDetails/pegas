@@ -136,7 +136,15 @@ select {
   18% { opacity: 1; }
   to { transform: translate(74px, -50%); opacity: 0; }
 }
+
+@keyframes handoff-travel-reverse {
+  from { transform: translate(74px, -50%); opacity: 0; }
+  18% { opacity: 1; }
+  to { transform: translate(0, -50%); opacity: 0; }
+}
+
 .handoff-pulse { animation: handoff-travel 700ms ease-out both; }
+.handoff-pulse-reverse { animation: handoff-travel-reverse 700ms ease-out both; }
 
 .pegas-primary-button {
   background-image: var(--pegas-gradient);

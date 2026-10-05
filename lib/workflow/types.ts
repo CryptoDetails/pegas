@@ -39,6 +39,8 @@ export type FinalRequestCard = {
   run_id: string;
   outcome: "routed_demo" | "manual_review" | "needs_information";
   department: Department | null;
+  initial_department: Department | null;
+  revision_count: 0 | 1;
   priority: Priority | null;
   confidentiality: Confidentiality | null;
   summary: string | null;
@@ -52,8 +54,8 @@ export type FinalRequestCard = {
 export type WorkflowEventType =
   | "workflow_started" | "input_checked" | "agent_started" | "agent_completed"
   | "agent_failed" | "agent_skipped" | "routing_decision" | "handoff_created"
-  | "review_completed" | "policy_checked" | "workflow_completed" | "workflow_failed"
-  | "heartbeat";
+  | "review_completed" | "revision_requested" | "correction_started" | "correction_completed"
+  | "policy_checked" | "workflow_completed" | "workflow_failed" | "heartbeat";
 
 export type WorkflowEvent = {
   event_version: 1;
