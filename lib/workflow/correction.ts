@@ -8,10 +8,18 @@ export type ReviewPathDecision =
   | { action: "reroute"; target_department: Department };
 
 const sensitivityPattern = /\b(privacy|private data|personal data|sensitive|confidential|restricted|credential|secret|api key|password|access token|auth token|secret token)\b/i;
+const escalatedSensitivityPattern = /\b(private data|personal data|restricted|credential|secret|api key|password|access token|auth token|secret token)\b/i;
+
+function reviewPublicText(review: ReviewDecision) {
+  return [review.reason, review.correction_request ?? "", ...review.issues].join(" ");
+}
 
 export function reviewerSignalsSensitivity(review: ReviewDecision) {
-  const publicText = [review.reason, review.correction_request ?? "", ...review.issues].join(" ");
-  return sensitivityPattern.test(publicText);
+  return sensitivityPattern.test(reviewPublicText(review));
+}
+
+export function reviewerSignalsEscalatedSensitivity(review: ReviewDecision) {
+  return escalatedSensitivityPattern.test(reviewPublicText(review));
 }
 
 export function decideReviewPath(args: {
@@ -19,10 +27,17 @@ export function decideReviewPath(args: {
   currentDepartment: Department;
   proposal: DepartmentProposal;
   correctionCycleUsed: boolean;
+  privacyCleared?: boolean;
 }): ReviewPathDecision {
-  const { review, currentDepartment, proposal, correctionCycleUsed } = args;
+  const { review, currentDepartment, proposal, correctionCycleUsed, privacyCleared = false } = args;
 
-  if (proposal.confidentiality !== "internal" || reviewerSignalsSensitivity(review)) {
+  const proposalRequiresManual = privacyCleared
+    ? proposal.confidentiality === "restricted"
+    : proposal.confidentiality !== "internal";
+  const reviewerRequiresManual = privacyCleared
+    ? reviewerSignalsEscalatedSensitivity(review)
+    : reviewerSignalsSensitivity(review);
+  if (proposalRequiresManual || reviewerRequiresManual) {
     return { action: "manual_review", reason: "Sensitivity or privacy escalation requires manual review." };
   }
 

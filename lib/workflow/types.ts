@@ -15,6 +15,17 @@ export type IntakeAssessment = {
   clarification_question: string | null;
 };
 
+export type PrivacyDecision = {
+  decision: "continue" | "manual_review" | "needs_information";
+  confidentiality: Confidentiality;
+  safe_brief: string;
+  reason: string;
+  recipient_restrictions: string[];
+  withheld_field_names: string[];
+  evidence: string[];
+  clarification_question: string | null;
+};
+
 export type DepartmentProposal = {
   department: Department;
   summary: string;
@@ -82,4 +93,4 @@ export type Handoff = {
   created_at: string;
 };
 
-export type AgentId = "intake_agent" | "technical_agent" | "business_agent" | "finance_agent" | "reviewer_agent";
+export type AgentId = "intake_agent" | "privacy_agent" | "technical_agent" | "business_agent" | "finance_agent" | "reviewer_agent";

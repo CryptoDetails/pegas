@@ -6,6 +6,7 @@ import {
   departmentRevisionPrompt,
   FINANCE_SYSTEM_PROMPT,
   INTAKE_SYSTEM_PROMPT,
+  PRIVACY_SYSTEM_PROMPT,
   REVIEWER_SYSTEM_PROMPT,
   TECHNICAL_SYSTEM_PROMPT,
   wrapAgentInput,
@@ -13,27 +14,36 @@ import {
 import {
   departmentSchema,
   intakeSchema,
+  privacySchema,
   reviewSchema,
   validateDepartment,
   validateIntake,
+  validatePrivacy,
   validateReview,
   type ValidationResult,
 } from "./schemas";
 import { sanitizeRequest } from "./sanitize";
+import {
+  buildPrivacyCorrectionBase,
+  buildPrivacyDepartmentContext,
+  privacyTerminalDecision,
+  shouldRunPrivacy,
+} from "./privacy";
 import type {
   AgentId,
   Department,
   DepartmentProposal,
   FinalRequestCard,
   IntakeAssessment,
+  PrivacyDecision,
   ReviewDecision,
   WorkflowEvent,
 } from "./types";
 
 const WORKFLOW_DEADLINE_MS = 180_000;
 const MODEL_ATTEMPT_MS = 120_000;
-const MAX_LLM_ATTEMPTS = 10;
-const REPAIR_INSTRUCTION = "Your previous response failed the required structured contract. Return only the corrected schema object with every required key and no extra keys. Use empty strings for nullable model-facing fields when no value applies. Arrays may be empty. evidence may be [] and must never contain paraphrases; if used, every evidence item must be copied character-for-character from sanitized_request.";
+const MAX_LLM_ATTEMPTS = 12;
+const REPAIR_INSTRUCTION = "Your previous response failed the required structured contract. Return only the corrected schema object with every required key and no extra keys. Use empty strings for nullable model-facing fields when no value applies. Arrays may be empty. evidence may be [] and must never contain paraphrases; if used, every evidence item must be copied character-for-character from the allowed request text.";
 
 class WorkflowError extends Error {
   constructor(
@@ -76,10 +86,18 @@ function departmentPrompt(department: Department) {
       : FINANCE_SYSTEM_PROMPT;
 }
 
+function evidenceSource(context: Record<string, unknown>) {
+  return typeof context.sanitized_request === "string"
+    ? context.sanitized_request
+    : typeof context.safe_brief === "string"
+      ? context.safe_brief
+      : "";
+}
+
 function isClearlyUnderspecifiedRequest(message: string) {
   const text = message.toLowerCase();
   const vague = /\b(needs? help|need help|an issue|some issue|a problem|some problem|please route|right team|who should handle|which team)\b/.test(text);
-  const concreteSignal = /\b(api|endpoint|http|401|403|500|integration|bug|error|technical|developer|sdk|webhook|campaign|marketing|partnership|partner launch|business|sales|invoice|billing|charge|payment|finance|refund)\b/.test(text);
+  const concreteSignal = /\b(api|endpoint|http|401|403|500|integration|bug|error|technical|developer|sdk|webhook|campaign|marketing|partnership|partner launch|business|sales|invoice|billing|charge|payment|finance|refund|pricing|agreement|contract)\b/.test(text);
   return vague && !concreteSignal;
 }
 
@@ -159,11 +177,7 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     }
   }
 
-  async function callDepartment(
-    department: Department,
-    context: Record<string, unknown>,
-    revision: boolean,
-  ): Promise<DepartmentProposal> {
+  async function callDepartment(department: Department, context: Record<string, unknown>, revision: boolean) {
     const agentId = departmentAgentId(department);
     emit("agent_started", department, agentId, { role: department, correction_cycle: revision ? 1 : 0 });
     try {
@@ -172,7 +186,7 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
         systemPrompt: revision ? departmentRevisionPrompt(department) : departmentPrompt(department),
         context,
         schema: departmentSchema,
-        validator: (v) => validateDepartment(v, context.sanitized_request as string, department),
+        validator: (v) => validateDepartment(v, evidenceSource(context), department),
       });
       emit("agent_completed", department, agentId, proposal);
       return proposal;
@@ -182,10 +196,7 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     }
   }
 
-  async function callReviewer(
-    context: Record<string, unknown>,
-    pass: 1 | 2,
-  ): Promise<ReviewDecision> {
+  async function callReviewer(context: Record<string, unknown>, pass: 1 | 2) {
     emit("agent_started", "reviewer", "reviewer_agent", { role: "Reviewer", pass });
     try {
       const review = await callAgent({
@@ -193,7 +204,7 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
         systemPrompt: REVIEWER_SYSTEM_PROMPT,
         context,
         schema: reviewSchema,
-        validator: (v) => validateReview(v, context.sanitized_request as string),
+        validator: (v) => validateReview(v, evidenceSource(context)),
       });
       emit("review_completed", "reviewer", "reviewer_agent", { ...review, pass });
       return review;
@@ -203,23 +214,22 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     }
   }
 
-  function manualCard(intake: IntakeAssessment, reason: string): FinalRequestCard {
-    const department = intake.department_candidate === "unknown" ? null : intake.department_candidate;
-    return {
-      run_id: runId,
-      outcome: "manual_review",
-      department,
-      initial_department: department,
-      revision_count: 0,
-      priority: intake.priority,
-      confidentiality: intake.confidentiality,
-      summary: intake.summary,
-      department_note: null,
-      next_action: null,
-      route_explanation: reason,
-      review_status: "manual_review",
-      clarification_question: intake.clarification_question,
-    };
+  async function callPrivacy(context: Record<string, unknown>, source: string) {
+    emit("agent_started", "privacy", "privacy_agent", { role: "Privacy" });
+    try {
+      const privacy = await callAgent({
+        agentId: "privacy_agent",
+        systemPrompt: PRIVACY_SYSTEM_PROMPT,
+        context,
+        schema: privacySchema,
+        validator: (v) => validatePrivacy(v, source),
+      });
+      emit("agent_completed", "privacy", "privacy_agent", privacy);
+      return privacy;
+    } catch (error) {
+      emit("agent_failed", "privacy", "privacy_agent", safeErrorPayload(error));
+      throw error;
+    }
   }
 
   function proposalCard(args: {
@@ -248,12 +258,39 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     };
   }
 
+  function terminalIntakeCard(args: {
+    intake: IntakeAssessment;
+    outcome: "manual_review" | "needs_information";
+    reason: string;
+    question?: string | null;
+    reviewStatus: string;
+    confidentiality?: FinalRequestCard["confidentiality"];
+  }): FinalRequestCard {
+    const department = args.intake.department_candidate === "unknown" ? null : args.intake.department_candidate;
+    return {
+      run_id: runId,
+      outcome: args.outcome,
+      department,
+      initial_department: department,
+      revision_count: 0,
+      priority: args.intake.priority,
+      confidentiality: args.confidentiality ?? args.intake.confidentiality,
+      summary: args.intake.summary,
+      department_note: null,
+      next_action: null,
+      route_explanation: args.reason,
+      review_status: args.reviewStatus,
+      clarification_question: args.question ?? args.intake.clarification_question,
+    };
+  }
+
   try {
     const sanitized = sanitizeRequest(rawMessage);
     emit("workflow_started", "workflow", null, { status: "running" });
     emit("input_checked", "input", null, {
       character_count: sanitized.sanitized.length,
       sensitivity_flag_types: sanitized.flagTypes,
+      deterministic_sensitivity_flags: sanitized.deterministicSensitivityFlags,
       confidentiality_floor: sanitized.confidentialityFloor,
     });
 
@@ -261,11 +298,10 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       const reason = "Credential-like material was detected and redacted. This request stops for manual review before any model call.";
       emit("routing_decision", "routing", null, { decision: "manual_review", reason, sensitivity_flag_types: sanitized.flagTypes });
       emit("agent_skipped", "intake", "intake_agent", { reason: "Sensitive input was stopped before model processing." });
-      for (const dept of ["technical", "business", "finance"] as const) {
-        emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Sensitive request stopped before department routing." });
-      }
+      emit("agent_skipped", "privacy", "privacy_agent", { reason: "Credential-like input is terminal before any model call." });
+      for (const dept of ["technical", "business", "finance"] as const) emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Sensitive request stopped before department routing." });
       emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "No department proposal was created." });
-      const card: FinalRequestCard = {
+      emit("workflow_completed", "workflow", null, {
         run_id: runId,
         outcome: "manual_review",
         department: null,
@@ -279,8 +315,7 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
         route_explanation: reason,
         review_status: "manual_review",
         clarification_question: null,
-      };
-      emit("workflow_completed", "workflow", null, card);
+      } satisfies FinalRequestCard);
       return;
     }
 
@@ -288,6 +323,7 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     const intakeContext = {
       sanitized_request: sanitized.sanitized,
       confidentiality_floor: sanitized.confidentialityFloor,
+      deterministic_sensitivity_flags: sanitized.deterministicSensitivityFlags,
     };
     let intake: IntakeAssessment;
     try {
@@ -304,14 +340,13 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
     }
     emit("agent_completed", "intake", "intake_agent", intake);
 
-    if (intake.privacy_review_needed || intake.confidentiality !== "internal") {
-      const reason = "Sensitive or restricted requests are not auto-forwarded to a department.";
+    if (intake.confidentiality === "restricted") {
+      const reason = "Intake classified the request as restricted, so deterministic policy requires manual review.";
       emit("routing_decision", "routing", "intake_agent", { decision: "manual_review", reason });
-      for (const dept of ["technical", "business", "finance"] as const) {
-        emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Sensitive request stopped before department routing." });
-      }
+      emit("agent_skipped", "privacy", "privacy_agent", { reason: "Restricted policy is terminal and cannot be downgraded." });
+      for (const dept of ["technical", "business", "finance"] as const) emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Restricted request stopped before department routing." });
       emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "No department proposal was created." });
-      emit("workflow_completed", "workflow", null, manualCard(intake, reason));
+      emit("workflow_completed", "workflow", null, terminalIntakeCard({ intake, outcome: "manual_review", reason, reviewStatus: "manual_review", confidentiality: "restricted" }));
       return;
     }
 
@@ -320,89 +355,152 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       const question = deterministicNeedsInformation
         ? "What is the request actually about: a technical/integration issue, a business/partnership matter, or a billing/finance issue?"
         : intake.clarification_question ?? "Which team should own this request: Technical, Business, or Finance?";
-      const needsInfoReason = deterministicNeedsInformation
-        ? "The request is too vague to route safely from the available information."
-        : intake.route_reason;
-      emit("routing_decision", "routing", "intake_agent", { decision: "needs_information", reason: needsInfoReason });
-      for (const dept of ["technical", "business", "finance"] as const) {
-        emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Routing needs clarification." });
-      }
+      const reason = deterministicNeedsInformation ? "The request is too vague to route safely from the available information." : intake.route_reason;
+      emit("routing_decision", "routing", "intake_agent", { decision: "needs_information", reason });
+      emit("agent_skipped", "privacy", "privacy_agent", { reason: "Routing needs clarification before privacy or department processing." });
+      for (const dept of ["technical", "business", "finance"] as const) emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Routing needs clarification." });
       emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "No department proposal was created." });
-      const card: FinalRequestCard = {
-        run_id: runId,
-        outcome: "needs_information",
-        department: null,
-        initial_department: null,
-        revision_count: 0,
-        priority: intake.priority,
-        confidentiality: intake.confidentiality,
-        summary: intake.summary,
-        department_note: null,
-        next_action: null,
-        route_explanation: needsInfoReason,
-        review_status: "not_run",
-        clarification_question: question,
-      };
-      emit("workflow_completed", "workflow", null, card);
+      emit("workflow_completed", "workflow", null, terminalIntakeCard({ intake, outcome: "needs_information", reason, question, reviewStatus: "not_run" }));
       return;
     }
 
     const initialDepartment = intake.department_candidate;
-    emit("routing_decision", "routing", "intake_agent", {
-      decision: "route",
-      department: initialDepartment,
-      reason: intake.route_reason,
+    const privacyNeeded = shouldRunPrivacy({
+      intake,
+      deterministicSensitivityFlags: sanitized.deterministicSensitivityFlags,
+      confidentialityFloor: sanitized.confidentialityFloor,
     });
-    for (const dept of ["technical", "business", "finance"] as const) {
-      if (dept !== initialDepartment) {
-        emit("agent_skipped", dept, departmentAgentId(dept), { reason: `Intake selected ${initialDepartment}.` });
+
+    let privacy: PrivacyDecision | null = null;
+    let privacyCleared = false;
+    let departmentBaseContext: Record<string, unknown>;
+    let downstreamWithheldFields = ["raw_request"];
+
+    if (privacyNeeded) {
+      const privacyContext: Record<string, unknown> = {
+        sanitized_request: sanitized.sanitized,
+        intake: {
+          summary: intake.summary,
+          request_type: intake.request_type,
+          department_candidate: intake.department_candidate,
+          priority: intake.priority,
+          confidentiality: intake.confidentiality,
+          privacy_review_needed: intake.privacy_review_needed,
+          route_reason: intake.route_reason,
+          evidence: intake.evidence,
+          missing_information: intake.missing_information,
+        },
+        deterministic_sensitivity_flags: sanitized.deterministicSensitivityFlags,
+        confidentiality_floor: sanitized.confidentialityFloor,
+      };
+      emit("handoff_created", "handoff-intake-privacy", "intake_agent", {
+        handoff_id: crypto.randomUUID(),
+        run_id: runId,
+        source_step_id: "intake",
+        target_step_id: "privacy",
+        source_agent_id: "intake_agent",
+        target_agent_id: "privacy_agent",
+        reason: "Privacy review is required before department forwarding.",
+        forwarded_context: privacyContext,
+        withheld_field_names: ["raw_request"],
+        created_at: new Date().toISOString(),
+      });
+      privacy = await callPrivacy(privacyContext, sanitized.sanitized);
+      const privacyDecision = privacyTerminalDecision({ privacy, confidentialityFloor: sanitized.confidentialityFloor });
+
+      if (privacyDecision !== "continue") {
+        const outcome = privacyDecision === "needs_information" ? "needs_information" : "manual_review";
+        const reason = privacy.confidentiality === "restricted"
+          ? "Privacy review classified the request as restricted, so manual review is required."
+          : privacy.reason;
+        emit("routing_decision", "routing", "privacy_agent", { decision: outcome, reason });
+        for (const dept of ["technical", "business", "finance"] as const) emit("agent_skipped", dept, departmentAgentId(dept), { reason: "Privacy review stopped automatic department forwarding." });
+        emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "No department proposal was created." });
+        emit("workflow_completed", "workflow", null, {
+          ...terminalIntakeCard({
+            intake,
+            outcome,
+            reason,
+            question: privacy.clarification_question,
+            reviewStatus: outcome === "manual_review" ? "manual_review_after_privacy" : "needs_information_after_privacy",
+            confidentiality: privacy.confidentiality,
+          }),
+          summary: privacy.safe_brief,
+        } satisfies FinalRequestCard);
+        return;
       }
+
+      privacyCleared = true;
+      departmentBaseContext = buildPrivacyDepartmentContext({ privacy, intake, targetDepartment: initialDepartment });
+      downstreamWithheldFields = [...new Set(["raw_request", ...privacy.withheld_field_names, "sanitized_request"])];
+      emit("routing_decision", "routing", "privacy_agent", {
+        decision: "route",
+        department: initialDepartment,
+        reason: privacy.reason,
+        privacy_reduced: true,
+      });
+      emit("handoff_created", "handoff-privacy-department", "privacy_agent", {
+        handoff_id: crypto.randomUUID(),
+        run_id: runId,
+        source_step_id: "privacy",
+        target_step_id: initialDepartment,
+        source_agent_id: "privacy_agent",
+        target_agent_id: departmentAgentId(initialDepartment),
+        reason: privacy.reason,
+        forwarded_context: departmentBaseContext,
+        withheld_field_names: downstreamWithheldFields,
+        created_at: new Date().toISOString(),
+      });
+    } else {
+      emit("agent_skipped", "privacy", "privacy_agent", { reason: "Privacy review not needed for this internal request." });
+      emit("routing_decision", "routing", "intake_agent", { decision: "route", department: initialDepartment, reason: intake.route_reason });
+      departmentBaseContext = {
+        request_summary: intake.summary,
+        request_type: intake.request_type,
+        priority: intake.priority,
+        confidentiality: intake.confidentiality,
+        route_reason: intake.route_reason,
+        evidence: intake.evidence,
+        missing_information: intake.missing_information,
+        sanitized_request: sanitized.sanitized,
+      };
+      emit("handoff_created", "handoff-intake-department", "intake_agent", {
+        handoff_id: crypto.randomUUID(),
+        run_id: runId,
+        source_step_id: "intake",
+        target_step_id: initialDepartment,
+        source_agent_id: "intake_agent",
+        target_agent_id: departmentAgentId(initialDepartment),
+        reason: intake.route_reason,
+        forwarded_context: departmentBaseContext,
+        withheld_field_names: ["raw_request"],
+        created_at: new Date().toISOString(),
+      });
     }
 
-    const firstDepartmentContext: Record<string, unknown> = {
-      request_summary: intake.summary,
-      request_type: intake.request_type,
-      priority: intake.priority,
-      confidentiality: intake.confidentiality,
-      route_reason: intake.route_reason,
-      evidence: intake.evidence,
-      missing_information: intake.missing_information,
-      sanitized_request: sanitized.sanitized,
-    };
-    emit("handoff_created", "handoff-intake-department", "intake_agent", {
-      handoff_id: crypto.randomUUID(),
-      run_id: runId,
-      source_step_id: "intake",
-      target_step_id: initialDepartment,
-      source_agent_id: "intake_agent",
-      target_agent_id: departmentAgentId(initialDepartment),
-      reason: intake.route_reason,
-      forwarded_context: firstDepartmentContext,
-      withheld_field_names: ["raw_request"],
-      created_at: new Date().toISOString(),
-    });
+    for (const dept of ["technical", "business", "finance"] as const) {
+      if (dept !== initialDepartment) emit("agent_skipped", dept, departmentAgentId(dept), { reason: `Routing selected ${initialDepartment}.` });
+    }
 
     let currentDepartment = initialDepartment;
-    let proposal = await callDepartment(currentDepartment, firstDepartmentContext, false);
+    let proposal = await callDepartment(currentDepartment, departmentBaseContext, false);
 
-    if (proposal.confidentiality !== "internal") {
-      const reason = "Department proposal raised confidentiality above internal, so manual review is required before Reviewer correction logic.";
+    const proposalPolicyFail = privacyCleared ? proposal.confidentiality === "restricted" : proposal.confidentiality !== "internal";
+    if (proposalPolicyFail) {
+      const reason = privacyCleared
+        ? "Department proposal escalated the privacy-reviewed request to restricted, so manual review is required."
+        : "Department proposal raised confidentiality above internal, so manual review is required before Reviewer correction logic.";
       emit("policy_checked", "policy", null, { passed: false, reason });
       emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "Sensitivity policy stopped the workflow before review." });
-      emit("workflow_completed", "workflow", null, proposalCard({
-        outcome: "manual_review",
-        proposal,
-        initialDepartment,
-        revisionCount: 0,
-        routeExplanation: reason,
-        reviewStatus: "manual_review",
-      }));
+      emit("workflow_completed", "workflow", null, proposalCard({ outcome: "manual_review", proposal, initialDepartment, revisionCount: 0, routeExplanation: reason, reviewStatus: "manual_review" }));
       return;
     }
 
+    const reviewerBase = privacyCleared
+      ? { ...departmentBaseContext }
+      : { sanitized_request: sanitized.sanitized, intake };
     const firstReviewerContext: Record<string, unknown> = {
-      sanitized_request: sanitized.sanitized,
-      intake,
+      ...reviewerBase,
       department_proposal: proposal,
       correction_cycle: 0,
     };
@@ -413,61 +511,37 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       target_step_id: "reviewer",
       source_agent_id: departmentAgentId(currentDepartment),
       target_agent_id: "reviewer_agent",
-      reason: "Review selected department proposal against source request and routing constraints.",
+      reason: "Review selected department proposal against the allowed request context and routing constraints.",
       forwarded_context: firstReviewerContext,
-      withheld_field_names: ["raw_request"],
+      withheld_field_names: downstreamWithheldFields,
       created_at: new Date().toISOString(),
     });
 
     const review1 = await callReviewer(firstReviewerContext, 1);
-    const firstDecision = decideReviewPath({
-      review: review1,
-      currentDepartment,
-      proposal,
-      correctionCycleUsed: false,
-    });
+    const firstDecision = decideReviewPath({ review: review1, currentDepartment, proposal, correctionCycleUsed: false, privacyCleared });
 
     if (firstDecision.action === "approve") {
-      emit("policy_checked", "policy", null, {
-        passed: true,
-        checks: ["single_department", "internal_confidentiality", "reviewer_approved"],
-      });
+      emit("policy_checked", "policy", null, { passed: true, checks: privacyCleared ? ["privacy_reduced_context", "reviewer_approved"] : ["single_department", "internal_confidentiality", "reviewer_approved"] });
       emit("workflow_completed", "workflow", null, proposalCard({
         outcome: "routed_demo",
         proposal,
         initialDepartment,
         revisionCount: 0,
-        routeExplanation: intake.route_reason,
-        reviewStatus: "approved",
+        routeExplanation: privacyCleared && privacy ? privacy.reason : intake.route_reason,
+        reviewStatus: privacyCleared ? "approved_after_privacy" : "approved",
       }));
       return;
     }
 
     if (firstDecision.action === "needs_information") {
       const question = review1.correction_request ?? proposal.open_questions[0] ?? intake.clarification_question ?? "What additional information should the team use to complete this request?";
-      emit("workflow_completed", "workflow", null, proposalCard({
-        outcome: "needs_information",
-        proposal,
-        initialDepartment,
-        revisionCount: 0,
-        routeExplanation: intake.route_reason,
-        reviewStatus: "needs_information",
-        clarificationQuestion: question,
-      }));
+      emit("workflow_completed", "workflow", null, proposalCard({ outcome: "needs_information", proposal, initialDepartment, revisionCount: 0, routeExplanation: privacyCleared && privacy ? privacy.reason : intake.route_reason, reviewStatus: "needs_information", clarificationQuestion: question }));
       return;
     }
 
     if (firstDecision.action === "manual_review") {
       emit("policy_checked", "policy", null, { passed: false, reason: firstDecision.reason });
-      emit("workflow_completed", "workflow", null, proposalCard({
-        outcome: "manual_review",
-        proposal,
-        initialDepartment,
-        revisionCount: 0,
-        routeExplanation: firstDecision.reason,
-        reviewStatus: review1.decision,
-        clarificationQuestion: review1.correction_request,
-      }));
+      emit("workflow_completed", "workflow", null, proposalCard({ outcome: "manual_review", proposal, initialDepartment, revisionCount: 0, routeExplanation: firstDecision.reason, reviewStatus: review1.decision, clarificationQuestion: review1.correction_request }));
       return;
     }
 
@@ -482,9 +556,15 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       issues: review1.issues,
     });
 
+    const correctionBase = privacyCleared && privacy
+      ? buildPrivacyCorrectionBase({ privacy, intake, targetDepartment })
+      : {
+          sanitized_request: sanitized.sanitized,
+          intake,
+          target_department: targetDepartment,
+        };
     const correctionContext: Record<string, unknown> = {
-      sanitized_request: sanitized.sanitized,
-      intake,
+      ...correctionBase,
       previous_department_proposal: proposal,
       reviewer_issues: review1.issues,
       reviewer_reason: review1.reason,
@@ -493,12 +573,7 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       correction_cycle: 1,
     };
 
-    emit("correction_started", "correction", departmentAgentId(targetDepartment), {
-      cycle: 1,
-      mode,
-      from_department: currentDepartment,
-      target_department: targetDepartment,
-    });
+    emit("correction_started", "correction", departmentAgentId(targetDepartment), { cycle: 1, mode, from_department: currentDepartment, target_department: targetDepartment });
     emit("handoff_created", "handoff-reviewer-department", "reviewer_agent", {
       handoff_id: crypto.randomUUID(),
       run_id: runId,
@@ -508,36 +583,25 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       target_agent_id: departmentAgentId(targetDepartment),
       reason: review1.correction_request ?? review1.reason,
       forwarded_context: correctionContext,
-      withheld_field_names: ["raw_request"],
+      withheld_field_names: downstreamWithheldFields,
       created_at: new Date().toISOString(),
     });
 
     currentDepartment = targetDepartment;
     proposal = await callDepartment(currentDepartment, correctionContext, true);
-    emit("correction_completed", "correction", departmentAgentId(currentDepartment), {
-      cycle: 1,
-      mode,
-      department: currentDepartment,
-    });
+    emit("correction_completed", "correction", departmentAgentId(currentDepartment), { cycle: 1, mode, department: currentDepartment });
 
-    if (proposal.confidentiality !== "internal") {
-      const reason = "The corrected department proposal raised confidentiality above internal, so manual review is required.";
+    const correctedProposalPolicyFail = privacyCleared ? proposal.confidentiality === "restricted" : proposal.confidentiality !== "internal";
+    if (correctedProposalPolicyFail) {
+      const reason = "The corrected department proposal requires manual review under the active confidentiality policy.";
       emit("policy_checked", "policy", null, { passed: false, reason });
       emit("agent_skipped", "reviewer", "reviewer_agent", { reason: "Sensitivity policy stopped Reviewer #2." });
-      emit("workflow_completed", "workflow", null, proposalCard({
-        outcome: "manual_review",
-        proposal,
-        initialDepartment,
-        revisionCount: 1,
-        routeExplanation: reason,
-        reviewStatus: "manual_review_after_correction",
-      }));
+      emit("workflow_completed", "workflow", null, proposalCard({ outcome: "manual_review", proposal, initialDepartment, revisionCount: 1, routeExplanation: reason, reviewStatus: "manual_review_after_correction" }));
       return;
     }
 
     const secondReviewerContext: Record<string, unknown> = {
-      sanitized_request: sanitized.sanitized,
-      intake,
+      ...(privacyCleared ? correctionBase : { sanitized_request: sanitized.sanitized, intake }),
       department_proposal: proposal,
       previous_department_proposal: correctionContext.previous_department_proposal,
       reviewer_1: review1,
@@ -553,61 +617,30 @@ export async function runWorkflow(rawMessage: string, emitExternal: EventEmitter
       target_agent_id: "reviewer_agent",
       reason: "Review the corrected proposal. This second reviewer pass is terminal.",
       forwarded_context: secondReviewerContext,
-      withheld_field_names: ["raw_request"],
+      withheld_field_names: downstreamWithheldFields,
       created_at: new Date().toISOString(),
     });
 
     const review2 = await callReviewer(secondReviewerContext, 2);
-    const secondDecision = decideReviewPath({
-      review: review2,
-      currentDepartment,
-      proposal,
-      correctionCycleUsed: true,
-    });
+    const secondDecision = decideReviewPath({ review: review2, currentDepartment, proposal, correctionCycleUsed: true, privacyCleared });
 
     if (secondDecision.action === "approve") {
-      emit("policy_checked", "policy", null, {
-        passed: true,
-        checks: ["single_correction_cycle", "internal_confidentiality", "reviewer_2_approved"],
-      });
-      emit("workflow_completed", "workflow", null, proposalCard({
-        outcome: "routed_demo",
-        proposal,
-        initialDepartment,
-        revisionCount: 1,
-        routeExplanation: intake.route_reason,
-        reviewStatus: mode === "reroute" ? "approved_after_reroute" : "approved_after_revision",
-      }));
+      emit("policy_checked", "policy", null, { passed: true, checks: privacyCleared ? ["single_correction_cycle", "privacy_reduced_context", "reviewer_2_approved"] : ["single_correction_cycle", "internal_confidentiality", "reviewer_2_approved"] });
+      emit("workflow_completed", "workflow", null, proposalCard({ outcome: "routed_demo", proposal, initialDepartment, revisionCount: 1, routeExplanation: mode === "reroute" ? `Reviewer rerouted ${initialDepartment} to ${currentDepartment} and the second review approved the final proposal.` : "Reviewer requested one revision and the second review approved the corrected proposal.", reviewStatus: mode === "reroute" ? "approved_after_reroute" : "approved_after_revision" }));
       return;
     }
 
     if (secondDecision.action === "needs_information") {
-      const question = review2.correction_request ?? proposal.open_questions[0] ?? "What additional information is needed to complete the corrected request?";
-      emit("workflow_completed", "workflow", null, proposalCard({
-        outcome: "needs_information",
-        proposal,
-        initialDepartment,
-        revisionCount: 1,
-        routeExplanation: "Reviewer #2 requested more information after the single correction cycle.",
-        reviewStatus: "needs_information_after_correction",
-        clarificationQuestion: question,
-      }));
+      const question = review2.correction_request ?? proposal.open_questions[0] ?? "What additional information is required to complete this request?";
+      emit("workflow_completed", "workflow", null, proposalCard({ outcome: "needs_information", proposal, initialDepartment, revisionCount: 1, routeExplanation: "The terminal second review needs more information.", reviewStatus: "needs_information_after_correction", clarificationQuestion: question }));
       return;
     }
 
-    const terminalReason = secondDecision.action === "manual_review"
+    const exhaustedReason = secondDecision.action === "manual_review"
       ? secondDecision.reason
       : "The single reviewer correction cycle was exhausted.";
-    emit("policy_checked", "policy", null, { passed: false, reason: terminalReason });
-    emit("workflow_completed", "workflow", null, proposalCard({
-      outcome: "manual_review",
-      proposal,
-      initialDepartment,
-      revisionCount: 1,
-      routeExplanation: terminalReason,
-      reviewStatus: "manual_review_after_correction",
-      clarificationQuestion: review2.correction_request,
-    }));
+    emit("policy_checked", "policy", null, { passed: false, reason: exhaustedReason });
+    emit("workflow_completed", "workflow", null, proposalCard({ outcome: "manual_review", proposal, initialDepartment, revisionCount: 1, routeExplanation: exhaustedReason, reviewStatus: "manual_review_after_correction", clarificationQuestion: review2.correction_request }));
   } catch (error) {
     emit("workflow_failed", "workflow", null, safeErrorPayload(error));
   }

@@ -194,7 +194,7 @@ def _infer(message: str) -> tuple[dict[str, str], int]:
     gpu="L4",
     min_containers=0,
     max_containers=1,
-    scaledown_window=60,
+    scaledown_window=150,
     timeout=300,
     startup_timeout=180,
     enable_memory_snapshot=False,

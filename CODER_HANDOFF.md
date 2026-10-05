@@ -1,179 +1,223 @@
-# PEGAS Request Desk Phase 2 — Coder Handoff
+# PEGAS REQUEST DESK — PHASE 3 CODER HANDOFF
 
 Date: 2026-10-05
+Baseline: provided `PEGAS_REQUEST_DESK_PHASE3_CODER_INPUT.zip`
 
-## What Phase 2 adds
+## Implemented
 
-Phase 2 preserves the accepted Phase 1 Request Desk and adds exactly one bounded Reviewer correction cycle.
+Phase 3 adds exactly the requested capabilities while preserving the deployed Phase 1/2 architecture:
 
-Supported Reviewer #1 outcomes now include:
+1. Real conditional `privacy_agent` using the existing self-hosted `qwen3:4b` Modal/Ollama transport.
+2. Real Handoff Inspector driven directly by `handoff_created` payloads.
+3. V3 homepage/navigation/Guide/legacy benchmark cleanup.
 
-- first-pass approval -> normal `routed_demo`;
-- `needs_information` -> terminal clarification outcome;
-- manual-review or sensitivity escalation -> terminal `manual_review`;
-- same-department `revise` -> one real Department revision call -> Reviewer #2;
-- cross-department reroute -> one real target Department call -> Reviewer #2.
+Phase 2 one-cycle reviewer correction/reroute remains intact and bounded.
 
-Reviewer #2 is terminal. If it approves, the final card uses the last valid DepartmentProposal. If it asks for another revision/reroute or otherwise cannot safely approve, the workflow ends without another model correction cycle.
+## Files added
 
-## Changed / added files
+- `lib/workflow/privacy.ts`
+- `components/HandoffInspector.tsx`
+- `app/build/page.tsx`
+- `scripts/phase3-privacy-tests.ts`
 
-Changed:
+## Files changed
 
 - `lib/workflow/types.ts`
-- `lib/workflow/orchestrator.ts`
+- `lib/workflow/schemas.ts`
 - `lib/workflow/prompts.ts`
+- `lib/workflow/sanitize.ts`
+- `lib/workflow/correction.ts`
+- `lib/workflow/orchestrator.ts`
 - `components/RequestDeskWorkspace.tsx`
 - `components/WorkflowGraph.tsx`
-- `components/WorkflowResultCard.tsx`
-- `app/globals.css`
-- `package.json`
+- `components/AppHeader.tsx`
+- `components/BenchmarkDashboard.tsx`
+- `scripts/phase2-correction-tests.ts` (import extensions only so the existing Node strip-types test runs directly)
+- `package.json` (adds `test:phase3` script)
 - `CODER_HANDOFF.md`
 
-Added:
+## Privacy trigger semantics
 
-- `lib/workflow/correction.ts`
-- `scripts/phase2-correction-tests.ts`
+Credential-like material remains terminal before any LLM call. It is redacted, marked `restricted`, and stops as `manual_review`; Intake and Privacy are skipped.
 
-## Backend behavior implemented
+For non-secret input, Privacy runs after validated Intake when any of these is true:
 
-- `MAX_LLM_ATTEMPTS` increased from 6 to 10 so the bounded five-logical-call path can still allow at most one structured-output repair per role.
-- Total workflow deadline remains 180 seconds.
-- Per-attempt timeout still uses the lesser of 120 seconds and remaining workflow time.
-- No infinite correction loop is possible.
-- Same-department correction sends a projected correction context to the same Department Agent with a revision-specific server prompt.
-- Cross-department reroute sends the projected correction context only to the Reviewer-selected target Department.
-- Correction context contains sanitized request, validated Intake, prior proposal, Reviewer public issues/reason/correction request, target department, and `correction_cycle: 1`.
-- The exact correction/reviewer contexts serialized into model calls are the same objects exposed in their corresponding `handoff_created.forwarded_context` events.
-- No raw pre-sanitized request is forwarded.
-- Department confidentiality above `internal` stops as manual review before further correction/review.
-- Reviewer public fields indicating sensitivity/privacy escalation stop as manual review.
-- Phase 1 credential-like pre-model stop remains unchanged in principle: credential-like material is redacted and the request terminates before any LLM call.
-- Deterministic underspecified-request floor remains in place.
+- Intake returns `privacy_review_needed=true`;
+- Intake returns `confidentiality=confidential`;
+- narrow deterministic non-secret sensitivity detection finds confidential business terms such as explicit `confidential`, `partner pricing`, an unreleased agreement/contract/deal/terms, or NDA material.
 
-## Event contract changes
+`restricted` always wins. Intake `restricted`, deterministic `restricted`, or Privacy `restricted` cannot be downgraded by a model output.
 
-Added public events:
+## Privacy result contract
 
-- `revision_requested`
-- `correction_started`
-- `correction_completed`
+```ts
+type PrivacyDecision = {
+  decision: "continue" | "manual_review" | "needs_information";
+  confidentiality: "internal" | "confidential" | "restricted";
+  safe_brief: string;                    // max 400
+  reason: string;                        // max 240
+  recipient_restrictions: string[];     // max 4
+  withheld_field_names: string[];       // max 8
+  evidence: string[];                   // max 3, exact source substrings only
+  clarification_question: string | null;
+};
+```
 
-Real `handoff_created` events remain mandatory for:
+The same structured-output hardening pattern remains: safe normalization, strict semantic enums, optional/nullable normalization, at most one repair attempt.
 
-- Reviewer -> Department correction/reroute;
-- corrected Department -> Reviewer #2.
+## Real context reduction
 
-Existing monotonic sequence IDs, unique event IDs, terminal event behavior, duplicate suppression, and interrupted stream handling remain intact.
+Intake -> Privacy receives only sanitized request plus validated/safe Intake fields and deterministic sensitivity metadata.
 
-## FinalRequestCard changes
+When Privacy returns `continue`, Privacy -> Department receives a reduced object containing only:
 
-Added:
+- `safe_brief`
+- `request_type`
+- final `department_candidate`
+- `priority`
+- Privacy confidentiality
+- Intake `route_reason`
+- `privacy_reason`
+- `recipient_restrictions`
+- Privacy evidence
 
-- `initial_department`
-- `revision_count` (`0 | 1`)
+It does **not** receive `sanitized_request`.
 
-`department` remains the final department.
+The Privacy-path correction/reroute context is rebuilt from this reduced Privacy base plus the previous proposal and public Reviewer fields. It never reintroduces `sanitized_request` or the larger pre-Privacy Intake payload.
 
-Examples now represented correctly:
+The second Reviewer pass also remains on the reduced context boundary.
 
-- first-pass Business approval: initial Business, final Business, revision count 0;
-- Technical revision: initial Technical, final Technical, revision count 1;
-- Business -> Finance reroute: initial Business, final Finance, revision count 1.
+## Handoff Inspector mapping
 
-## UI changes
+The client stores only actual `handoff_created` events. `HandoffInspector` renders the event payload directly:
 
-- Badge changed from Phase 1 to Phase 2.
-- Real `revision_requested` displays a compact revision/reroute status.
-- Reviewer -> Department handoff pulses in reverse direction.
-- Same Department can legitimately transition `completed -> running -> completed`.
-- Reviewer can legitimately transition `completed -> running -> completed` for pass #2.
-- Reroute keeps the first Department visibly completed while activating the new target Department.
-- Final card shows `Revised once` or `Rerouted X -> Y` only when `revision_count=1`.
-- Phase 2 events appear in the public event trace.
+- source agent -> target agent
+- `reason`
+- `forwarded_context`
+- `withheld_field_names`
 
-## Deterministic Phase 2 verification
+No alternate client-side context is reconstructed. System prompts, auth data, raw pre-sanitized input and chain-of-thought are not exposed.
 
-Command run:
+## UI / navigation
+
+- Primary navigation is now `Demo / Guide / Blog`.
+- `/benchmark` remains available but is removed from primary navigation.
+- `/benchmark` is labeled `Legacy single-step experiment` and explains that metrics predate the multi-agent Request Desk.
+- The benchmark rerun CTA is visually de-emphasized and not auto-run.
+- `/build` now exists as `Guide` and documents:
+  - `Vercel -> Modal -> Ollama -> qwen3:4b`
+  - `Intake -> optional Privacy -> Department -> Review`
+  - all roles share the same self-hosted model
+  - Privacy is conditional
+  - departments are simulated recipients in the current incremental implementation
+  - link to `Legacy benchmark`
+- Homepage label is `Request Desk · Phase 3`.
+- Headline is `One request. The right team.`
+- Added a fictional Privacy preset; selecting it only fills the input.
+- Activity/Event Trace is collapsed behind `View activity`; compact live status remains visible during runs.
+- Graph adds real optional Privacy state and preserves Phase 2 reverse correction pulse.
+
+## Budget / timeout
+
+- Route `maxDuration` remains **180 seconds**.
+- Workflow deadline remains **180 seconds**.
+- Per-attempt maximum remains **120 seconds or remaining workflow time, whichever is lower**.
+- Total LLM attempt ceiling changed from **10 -> 12** because the bounded Phase 3 maximum is six logical roles (`Intake`, `Privacy`, `Department #1`, `Reviewer #1`, `Department #2`, `Reviewer #2`) and each role may have at most one structured-output repair.
+- No unbounded retry/correction loop was added.
+
+## Verification performed
+
+### Deterministic Phase 2 correction tests
+
+Command:
 
 ```text
-npm run test:phase2
+node --experimental-strip-types scripts/phase2-correction-tests.ts
+```
+
+Result: PASS — existing 5 acceptance paths.
+
+### Deterministic Phase 3 Privacy/context tests
+
+Command:
+
+```text
+node --experimental-strip-types scripts/phase3-privacy-tests.ts
 ```
 
 Result: PASS.
 
-The local no-Modal test covers the required acceptance paths:
+Covered:
 
-1. Reviewer #1 same-department revise -> exactly one Department correction call + Reviewer #2.
-2. Reviewer #1 Business -> Finance reroute -> Finance only + Reviewer #2.
-3. Reviewer #2 approval -> terminal approval after one correction.
-4. Reviewer #2 asks to revise again -> terminal manual review with no third model cycle.
-5. Sensitivity escalation before correction -> terminal manual review with zero correction calls.
+- non-secret confidential input triggers Privacy rather than credential stop;
+- Privacy -> Department projection omits `sanitized_request`;
+- Privacy correction/reroute projection still omits `sanitized_request`;
+- Privacy `restricted` forces manual review even if decision says `continue`;
+- deterministic `restricted` floor cannot be downgraded;
+- credential-like input remains restricted and does not run Privacy.
 
-A focused TypeScript type-check of the server/model/workflow files was also run with the globally available TypeScript compiler and empty external type roots:
+### Modified TS/TSX syntax transpile check
 
-```text
-tsc --noEmit --pretty false --strict --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --skipLibCheck --typeRoots /tmp/emptytypes /tmp/pegas_globals.d.ts lib/ollama.ts lib/workflow/types.ts lib/workflow/correction.ts lib/workflow/events.ts lib/workflow/prompts.ts lib/workflow/schemas.ts lib/workflow/sanitize.ts lib/workflow/orchestrator.ts
-```
+Global TypeScript `transpileModule` was run over 15 changed/new TS/TSX files.
 
-Result: PASS.
+Result: PASS — 0 transpile diagnostics.
 
-A syntax/transpile check was also run across workflow/API/components: 25 TS/TSX files, 0 syntax errors.
+### Protected-file regression check
 
-## Mandatory lint/build gate
-
-Attempted dependency install:
-
-```text
-npm ci
-```
-
-The environment could not complete it because DNS access to npm failed with `EAI_AGAIN registry.npmjs.org`.
-
-Commands then run exactly as required:
-
-```text
-npm run lint
-npm run build
-```
-
-Results in this coder environment:
-
-- `npm run lint`: NOT VERIFIED / failed to start because `eslint` was unavailable after the failed dependency install (`sh: eslint: not found`).
-- `npm run build`: NOT VERIFIED / failed to start because `next` was unavailable after the failed dependency install (`sh: next: not found`).
-
-These are environment/dependency-install failures, not successful lint/build results. Run both again on the owner machine after normal `npm ci` / existing project dependency setup.
-
-## Live smoke tests
-
-Not performed. The provided coder snapshot did not include usable production Modal/Vercel credentials, and this environment was not used to contact the live model transport.
-
-Therefore:
-
-- no live Business/Finance smoke result is claimed;
-- no live correction/reroute is claimed;
-- deterministic correction coverage is the evidence for the Phase 2 correction branches in this package.
-
-## Regression protection checked
-
-The following accepted Phase 1 / protected files were compared against the provided Phase 2 input snapshot and remain unchanged:
+Byte comparison against the provided Phase 3 baseline confirmed unchanged:
 
 - `app/api/analyze/route.ts`
 - `lib/ollama.ts`
-- `lib/schema.ts`
 - `lib/prompt.ts`
+- `lib/schema.ts`
 - `modal-poc/modal-poc/app.py`
 
-No model/provider/runtime change was made. `/api/proof` was not changed. No LangChain/LangGraph, queue, Redis, DB, WebSocket, checkpointing, background job, or durable resume mechanism was added.
+Route config remains:
 
-## Deploy / environment impact
+```ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 180;
+```
 
-No new environment variables are required.
+## npm lint/build status
 
-No dependency version was changed and no new npm dependency was added.
+Attempted dependency installation:
 
-`app/api/workflows/run/route.ts` keeps `maxDuration = 180`; Phase 2 deliberately relies on remaining-workflow-time budgeting and does not claim that a cold five-call correction path is guaranteed to complete within 180 seconds.
+```text
+npm ci --ignore-scripts --no-audit --no-fund
+```
 
-## Known limitation
+In this coder environment the online install did not complete and left no usable `eslint`/`next` executables. An offline retry confirmed the cache is incomplete:
 
-The Phase 2 correction path is intentionally one cycle only. Reviewer #2 cannot trigger a third Department/Reviewer loop; such a result terminates safely as manual review (or needs information where applicable).
+```text
+npm ci --offline --ignore-scripts --no-audit --no-fund
+```
+
+Result: FAILED with `ENOTCACHED` for `zod-validation-error-4.0.2.tgz`.
+
+Therefore the requested commands were attempted but could not execute successfully in this environment:
+
+```text
+npm run lint
+```
+
+Result: NOT PASSED / environment dependency issue — `eslint: not found`.
+
+```text
+npm run build
+```
+
+Result: NOT PASSED / environment dependency issue — `next: not found`.
+
+Do not treat the transpile/deterministic tests as a replacement for a real Next build. On the owner machine/CI, run `npm ci`, then `npm run lint`, `npm run build`, `npm run test:phase2`, and `npm run test:phase3` before deployment.
+
+## Live smoke tests
+
+Live Modal smoke tests not performed. This environment did not provide a verified deploy/runtime credential path for calling the production workflow, and no live correction or Privacy run is claimed.
+
+## Known limitations
+
+- The six-logical-call cold path is bounded but is not guaranteed to fit 180 seconds; the code always uses remaining workflow time.
+- Privacy is an incremental Phase 3 role. Departments remain the existing Technical/Business/Finance simulated recipient profiles; this phase does not perform the later V3 Routing-role topology migration.
+- Deterministic non-secret sensitivity detection is intentionally narrow and auditable rather than a broad PII detector.

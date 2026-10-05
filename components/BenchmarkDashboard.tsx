@@ -171,10 +171,10 @@ export function BenchmarkDashboard({ cases }: { cases: BenchmarkCase[] }) {
       <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
         <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
           <div className="max-w-3xl">
-            <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-blue-700">Measured evidence</span>
+            <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-blue-700">Legacy single-step experiment</span>
             <h1 className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-6xl">Measured, not cherry-picked.</h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
-              A fixed 25-case dataset shows whether the model is actually useful for the task, how fast it responds, and where it fails.
+              These metrics predate the multi-agent Request Desk and are retained as historical single-step triage and regression evidence.
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -182,11 +182,11 @@ export function BenchmarkDashboard({ cases }: { cases: BenchmarkCase[] }) {
               type="button"
               onClick={runBenchmark}
               disabled={runState === "running"}
-              className="focus-ring inline-flex w-full items-center justify-center rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
+              className="focus-ring inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-wait disabled:opacity-60"
             >
-              {runState === "running" ? `Running ${completed} of ${cases.length}` : hasRun ? "Run 25-case benchmark again" : "Run 25-case benchmark"}
+              {runState === "running" ? `Running ${completed} of ${cases.length}` : "Run legacy benchmark"}
             </button>
-            <p className="mt-3 text-xs leading-5 text-slate-500">The 25 cases were labeled before evaluation and are automatically sent through the same live model path used by the demo.</p>
+            <p className="mt-3 text-xs leading-5 text-slate-500">Optional internal-style rerun of the historical single-step path. It is not an evaluation of the current multi-agent workflow.</p>
           </div>
         </section>
 

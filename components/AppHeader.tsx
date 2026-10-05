@@ -4,9 +4,8 @@ import Link from "next/link";
 type AppHeaderProps = { active: "demo" | "benchmark" | "build" | "blog" };
 export function AppHeader({ active }: AppHeaderProps) {
   const links = [
-    { href: "/", label: "Request Desk", id: "demo" as const },
-    { href: "/benchmark", label: "Benchmark", id: "benchmark" as const },
-    { href: "/build", label: "Build guide", id: "build" as const },
+    { href: "/", label: "Demo", id: "demo" as const },
+    { href: "/build", label: "Guide", id: "build" as const },
     { href: "/blog", label: "Blog", id: "blog" as const },
   ];
   return <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:flex-nowrap sm:px-8">

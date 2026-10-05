@@ -3,6 +3,7 @@ import type {
   Department,
   DepartmentProposal,
   IntakeAssessment,
+  PrivacyDecision,
   Priority,
   ReviewDecision,
 } from "./types";
@@ -11,6 +12,7 @@ const departments = ["technical", "business", "finance"] as const;
 const priorities = ["low", "medium", "high"] as const;
 const confidentiality = ["internal", "confidential", "restricted"] as const;
 const reviewDecisions = ["approved", "revise", "manual_review", "needs_information"] as const;
+const privacyDecisions = ["continue", "manual_review", "needs_information"] as const;
 
 // These schemas guide Ollama/Qwen. They intentionally require only the fields that
 // actually control routing/policy. Non-control arrays and nullable text are optional
@@ -38,6 +40,22 @@ export const intakeSchema = {
     "privacy_review_needed",
     "route_reason",
   ],
+} as const;
+
+
+export const privacySchema = {
+  type: "object",
+  properties: {
+    decision: { type: "string", enum: privacyDecisions },
+    confidentiality: { type: "string", enum: confidentiality },
+    safe_brief: { type: "string" },
+    reason: { type: "string" },
+    recipient_restrictions: { type: "array", items: { type: "string" }, maxItems: 4 },
+    withheld_field_names: { type: "array", items: { type: "string" }, maxItems: 8 },
+    evidence: { type: "array", items: { type: "string" }, maxItems: 3 },
+    clarification_question: { type: "string" },
+  },
+  required: ["decision", "confidentiality", "safe_brief", "reason"],
 } as const;
 
 export const departmentSchema = {
@@ -319,6 +337,69 @@ export function validateIntake(v: unknown, source: string): ValidationResult<Int
       routeReason.normalized_fields,
       evidence.normalized_fields,
       missing.normalized_fields,
+      clarification.normalized_fields,
+    ),
+  };
+}
+
+
+export function validatePrivacy(v: unknown, source: string): ValidationResult<PrivacyDecision> {
+  const expected = [
+    "decision",
+    "confidentiality",
+    "safe_brief",
+    "reason",
+    "recipient_restrictions",
+    "withheld_field_names",
+    "evidence",
+    "clarification_question",
+  ] as const;
+  const root = objectForAgent(v, expected);
+  if (!root.value) return { ok: false, reason: "privacy output must be a JSON object" };
+  const data = root.value;
+
+  const decision = enumText(data.decision, "decision", privacyDecisions);
+  if (isFailure(decision)) return decision;
+  const confidentialityValue = enumText(data.confidentiality, "confidentiality", confidentiality);
+  if (isFailure(confidentialityValue)) return confidentialityValue;
+  const safeBrief = requiredText(data.safe_brief, "safe_brief", 400);
+  if (isFailure(safeBrief)) return safeBrief;
+  const reason = requiredText(data.reason, "reason", 240);
+  if (isFailure(reason)) return reason;
+  const restrictions = textArray(data.recipient_restrictions, "recipient_restrictions", 180);
+  if (isFailure(restrictions)) return restrictions;
+  if (restrictions.value.length > 4) return { ok: false, reason: "recipient_restrictions exceeds 4 entries" };
+  const withheld = textArray(data.withheld_field_names, "withheld_field_names", 120);
+  if (isFailure(withheld)) return withheld;
+  if (withheld.value.length > 8) return { ok: false, reason: "withheld_field_names exceeds 8 entries" };
+  const evidence = evidenceArray(data.evidence, source);
+  const clarification = optionalText(data.clarification_question, "clarification_question", 300);
+  if (isFailure(clarification)) return clarification;
+
+  const withheldFields = [...new Set(withheld.value)];
+  if (!withheldFields.includes("sanitized_request")) withheldFields.push("sanitized_request");
+
+  return {
+    ok: true,
+    value: {
+      decision: decision.value,
+      confidentiality: confidentialityValue.value,
+      safe_brief: safeBrief.value,
+      reason: reason.value,
+      recipient_restrictions: restrictions.value,
+      withheld_field_names: withheldFields.slice(0, 8),
+      evidence: evidence.value,
+      clarification_question: clarification.value,
+    },
+    normalized_fields: mergeNormalized(
+      root.normalized,
+      decision.normalized_fields,
+      confidentialityValue.normalized_fields,
+      safeBrief.normalized_fields,
+      reason.normalized_fields,
+      restrictions.normalized_fields,
+      withheld.normalized_fields,
+      evidence.normalized_fields,
       clarification.normalized_fields,
     ),
   };

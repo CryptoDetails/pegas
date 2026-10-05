@@ -3,6 +3,7 @@ import type { Confidentiality } from "./types";
 export type SanitizedInput = {
   sanitized: string;
   flagTypes: string[];
+  deterministicSensitivityFlags: string[];
   confidentialityFloor: Confidentiality;
 };
 
@@ -12,6 +13,13 @@ const patterns: Array<{ type: string; regex: RegExp; replace: string }> = [
   { type: "api_key", regex: /((?:api[ _-]?key|apikey)\s*[:=]\s*)([^\s,;]+)/gi, replace: `$1${marker}` },
   { type: "bearer_token", regex: /((?:authorization\s*:\s*)?bearer\s+)([^\s,;]+)/gi, replace: `$1${marker}` },
   { type: "token_prefix", regex: /\b(sk-|ghp_|wk-|xoxb-|xoxp-|xoxa-|xoxr-)[A-Za-z0-9_\-]{6,}\b/g, replace: marker },
+];
+
+const sensitivityPatterns: Array<{ type: string; regex: RegExp }> = [
+  { type: "confidential_business_terms", regex: /\bconfidential\b/i },
+  { type: "unreleased_agreement", regex: /\bunreleased\s+(?:agreement|contract|deal|terms?)\b/i },
+  { type: "partner_pricing", regex: /\bpartner\s+pricing\b/i },
+  { type: "nda_material", regex: /\b(?:under|covered by)\s+(?:an?\s+)?nda\b/i },
 ];
 
 export function sanitizeRequest(input: string): SanitizedInput {
@@ -25,9 +33,15 @@ export function sanitizeRequest(input: string): SanitizedInput {
       return `${prefix}${marker}`;
     });
   }
+
+  const sensitivityFlags = sensitivityPatterns
+    .filter((pattern) => pattern.regex.test(sanitized))
+    .map((pattern) => pattern.type);
+
   return {
     sanitized,
     flagTypes: [...flags].sort(),
-    confidentialityFloor: flags.size ? "restricted" : "internal",
+    deterministicSensitivityFlags: [...new Set(sensitivityFlags)].sort(),
+    confidentialityFloor: flags.size ? "restricted" : sensitivityFlags.length ? "confidential" : "internal",
   };
 }
