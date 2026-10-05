@@ -31,7 +31,7 @@ export function WorkflowResultCard({ card }: { card: FinalRequestCard }) {
         <Fact label="Review" value={card.review_status.replaceAll("_", " ")} />
       </div>
       {card.summary && <div className="mt-5 rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Summary</p><p className="mt-2 text-sm leading-6 text-slate-700">{card.summary}</p></div>}
-      {card.department_note && <div className="mt-4"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Department note</p><p className="mt-1 text-sm leading-6 text-slate-700">{card.department_note}</p></div>}
+      {card.department_note && <div className="mt-4"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Department brief</p><p className="mt-1 text-sm leading-6 text-slate-700">{card.department_note}</p></div>}
       {card.next_action && <div className="mt-4"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Next action</p><p className="mt-1 text-sm leading-6 text-slate-700">{card.next_action}</p></div>}
       <div className="mt-4"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Route explanation</p><p className="mt-1 text-sm leading-6 text-slate-700">{card.route_explanation}</p></div>
       {card.clarification_question && <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Clarification</p><p className="mt-2 text-sm font-medium text-amber-950">{card.clarification_question}</p></div>}

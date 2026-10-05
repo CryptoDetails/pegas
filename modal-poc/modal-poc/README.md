@@ -92,7 +92,7 @@ The script performs exactly one `/health` request and one `/analyze` request. It
 
 ## G. Lifecycle test protocol
 
-Use this sequence manually. The app is configured with `min_containers=0`, `max_containers=1`, and `scaledown_window=60` seconds.
+Use this sequence manually. The app is configured with `min_containers=0`, `max_containers=1`, and `scaledown_window=150` seconds.
 
 ```text
 Cycle 1:

@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint .",
     "test:phase2": "node --experimental-strip-types scripts/phase2-correction-tests.ts",
-    "test:phase3": "node --experimental-strip-types scripts/phase3-privacy-tests.ts"
+    "test:phase3": "node --experimental-strip-types scripts/phase3-privacy-tests.ts",
+    "test:phase4:routing": "node --experimental-strip-types scripts/phase4-routing-tests.ts",
+    "test:phase4:evaluation": "node --experimental-strip-types scripts/phase4-evaluation-tests.ts"
   },
   "dependencies": {
     "next": "16.3.8",

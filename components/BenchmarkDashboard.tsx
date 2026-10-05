@@ -176,6 +176,7 @@ export function BenchmarkDashboard({ cases }: { cases: BenchmarkCase[] }) {
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
               These metrics predate the multi-agent Request Desk and are retained as historical single-step triage and regression evidence.
             </p>
+            <p className="mt-3 text-sm text-slate-500">Looking for the current Request Desk evaluation? <a href="/evaluation" className="font-semibold text-blue-700 underline">View the multi-agent workflow evaluation.</a></p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <button

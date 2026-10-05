@@ -1,7 +1,7 @@
 import type {
   Confidentiality,
   Department,
-  DepartmentProposal,
+  RoutingDecision,
   IntakeAssessment,
   PrivacyDecision,
   Priority,
@@ -58,14 +58,15 @@ export const privacySchema = {
   required: ["decision", "confidentiality", "safe_brief", "reason"],
 } as const;
 
-export const departmentSchema = {
+export const routingSchema = {
   type: "object",
   properties: {
     department: { type: "string", enum: departments },
     summary: { type: "string" },
     priority: { type: "string", enum: priorities },
     confidentiality: { type: "string", enum: confidentiality },
-    department_note: { type: "string" },
+    routing_reason: { type: "string" },
+    department_brief: { type: "string" },
     next_action: { type: "string" },
     open_questions: { type: "array", items: { type: "string" } },
     evidence: { type: "array", items: { type: "string" }, maxItems: 3 },
@@ -75,7 +76,8 @@ export const departmentSchema = {
     "summary",
     "priority",
     "confidentiality",
-    "department_note",
+    "routing_reason",
+    "department_brief",
     "next_action",
   ],
 } as const;
@@ -415,42 +417,42 @@ export function validatePrivacy(v: unknown, source: string): ValidationResult<Pr
   };
 }
 
-export function validateDepartment(
+export function validateRouting(
   v: unknown,
   source: string,
-  selected: Department,
-): ValidationResult<DepartmentProposal> {
+): ValidationResult<RoutingDecision> {
   const expected = [
     "department",
     "summary",
     "priority",
     "confidentiality",
-    "department_note",
+    "routing_reason",
+    "department_brief",
     "next_action",
     "open_questions",
     "evidence",
   ] as const;
   const root = objectForAgent(v, expected);
-  if (!root.value) return { ok: false, reason: "department output must be a JSON object" };
+  if (!root.value) return { ok: false, reason: "routing output must be a JSON object" };
   const data = root.value;
 
   const department = enumText(data.department, "department", departments);
   if (isFailure(department)) return department;
-  if (department.value !== selected) {
-    return { ok: false, reason: `department must remain ${selected}, received ${department.value}` };
-  }
   const summary = requiredText(data.summary, "summary", 300);
   if (isFailure(summary)) return summary;
   const priority = enumText(data.priority, "priority", priorities);
   if (isFailure(priority)) return priority;
   const confidentialityValue = enumText(data.confidentiality, "confidentiality", confidentiality);
   if (isFailure(confidentialityValue)) return confidentialityValue;
-  const departmentNote = requiredText(data.department_note, "department_note", 500);
-  if (isFailure(departmentNote)) return departmentNote;
-  const nextAction = requiredText(data.next_action, "next_action", 300);
+  const routingReason = requiredText(data.routing_reason, "routing_reason", 240);
+  if (isFailure(routingReason)) return routingReason;
+  const departmentBrief = requiredText(data.department_brief, "department_brief", 500);
+  if (isFailure(departmentBrief)) return departmentBrief;
+  const nextAction = requiredText(data.next_action, "next_action", 400);
   if (isFailure(nextAction)) return nextAction;
   const openQuestions = textArray(data.open_questions, "open_questions", 240);
   if (isFailure(openQuestions)) return openQuestions;
+  if (openQuestions.value.length > 4) return { ok: false, reason: "open_questions exceeds 4 entries" };
   const evidence = evidenceArray(data.evidence, source);
 
   return {
@@ -460,7 +462,8 @@ export function validateDepartment(
       summary: summary.value,
       priority: priority.value,
       confidentiality: confidentialityValue.value,
-      department_note: departmentNote.value,
+      routing_reason: routingReason.value,
+      department_brief: departmentBrief.value,
       next_action: nextAction.value,
       open_questions: openQuestions.value,
       evidence: evidence.value,
@@ -471,7 +474,8 @@ export function validateDepartment(
       summary.normalized_fields,
       priority.normalized_fields,
       confidentialityValue.normalized_fields,
-      departmentNote.normalized_fields,
+      routingReason.normalized_fields,
+      departmentBrief.normalized_fields,
       nextAction.normalized_fields,
       openQuestions.normalized_fields,
       evidence.normalized_fields,

@@ -1,4 +1,5 @@
-import type { Confidentiality, Department, IntakeAssessment, PrivacyDecision } from "./types";
+import type { Confidentiality, IntakeAssessment, PrivacyDecision } from "./types";
+import { DEPARTMENT_PROFILES } from "./departments.ts";
 
 export function shouldRunPrivacy(args: {
   intake: IntakeAssessment;
@@ -15,34 +16,21 @@ export function privacyTerminalDecision(args: {
   privacy: PrivacyDecision;
   confidentialityFloor: Confidentiality;
 }): "continue" | "manual_review" | "needs_information" {
-  if (args.confidentialityFloor === "restricted" || args.privacy.confidentiality === "restricted") {
-    return "manual_review";
-  }
+  if (args.confidentialityFloor === "restricted" || args.privacy.confidentiality === "restricted") return "manual_review";
   return args.privacy.decision;
 }
 
-export function buildPrivacyDepartmentContext(args: {
-  privacy: PrivacyDecision;
-  intake: IntakeAssessment;
-  targetDepartment: Department;
-}) {
+export function buildPrivacyRoutingContext(args: { privacy: PrivacyDecision; intake: IntakeAssessment }) {
   return {
     safe_brief: args.privacy.safe_brief,
     request_type: args.intake.request_type,
-    department_candidate: args.targetDepartment,
+    routing_hint: args.intake.department_candidate,
     priority: args.intake.priority,
     confidentiality: args.privacy.confidentiality,
     route_reason: args.intake.route_reason,
     privacy_reason: args.privacy.reason,
     recipient_restrictions: args.privacy.recipient_restrictions,
     evidence: args.privacy.evidence,
+    department_profiles: DEPARTMENT_PROFILES,
   };
-}
-
-export function buildPrivacyCorrectionBase(args: {
-  privacy: PrivacyDecision;
-  intake: IntakeAssessment;
-  targetDepartment: Department;
-}) {
-  return buildPrivacyDepartmentContext(args);
 }

@@ -14,7 +14,7 @@ const presets = {
   Privacy: "This fictional request includes confidential partner pricing for an unreleased agreement. Please route it to the appropriate team without forwarding unnecessary details.",
 };
 
-const initialStates: GraphStates = { intake: "idle", privacy: "idle", technical: "idle", business: "idle", finance: "idle", reviewer: "idle" };
+const initialStates: GraphStates = { intake: "idle", privacy: "idle", routing: "idle", reviewer: "idle" };
 
 function isDepartment(value: unknown): value is Department { return value === "technical" || value === "business" || value === "finance"; }
 function isHandoff(value: unknown): value is Handoff {
@@ -47,9 +47,7 @@ export function RequestDeskWorkspace() {
     if (!busy) return null;
     if (states.reviewer === "running") return "Reviewer is checking the proposal…";
     if (states.privacy === "running") return "Privacy is reducing context before forwarding…";
-    if (states.technical === "running") return "Technical agent is working…";
-    if (states.business === "running") return "Business agent is working…";
-    if (states.finance === "running") return "Finance agent is working…";
+    if (states.routing === "running") return "Routing is selecting the destination…";
     if (states.intake === "running") return "Intake is running. The first request after idle may be waking the model backend…";
     return "Starting workflow…";
   }, [busy, states]);
@@ -66,10 +64,10 @@ export function RequestDeskWorkspace() {
     setPulseCounter((previous) => {
       const key = previous + 1;
       if (source === "intake" && target === "privacy") setPulse({ key, edge: "intake-privacy", direction: "forward" });
-      else if (source === "intake" && isDepartment(target)) setPulse({ key, edge: "intake-department", direction: "forward" });
-      else if (source === "privacy" && isDepartment(target)) setPulse({ key, edge: "privacy-department", direction: "forward" });
-      else if (isDepartment(source) && target === "reviewer") setPulse({ key, edge: "department-reviewer", direction: "forward" });
-      else if (source === "reviewer" && isDepartment(target)) setPulse({ key, edge: "department-reviewer", direction: "reverse" });
+      else if (source === "intake" && target === "routing") setPulse({ key, edge: "intake-routing", direction: "forward" });
+      else if (source === "privacy" && target === "routing") setPulse({ key, edge: "privacy-routing", direction: "forward" });
+      else if (source === "routing" && target === "reviewer") setPulse({ key, edge: "routing-reviewer", direction: "forward" });
+      else if (source === "reviewer" && target === "routing") setPulse({ key, edge: "routing-reviewer", direction: "reverse" });
       return key;
     });
   }
@@ -97,9 +95,8 @@ export function RequestDeskWorkspace() {
       const payload = event.payload as { mode?: unknown; from_department?: unknown; target_department?: unknown };
       const from = payload.from_department;
       const target = payload.target_department;
-      if (isDepartment(target)) setSelected(target);
-      if (payload.mode === "reroute" && isDepartment(from) && isDepartment(target)) setRevisionNotice(`Reviewer rerouted ${capitalize(from)} → ${capitalize(target)}`);
-      else setRevisionNotice("Reviewer requested one revision");
+      if (payload.mode === "reroute_suggested" && isDepartment(from) && isDepartment(target)) setRevisionNotice(`Reviewer suggested ${capitalize(from)} → ${capitalize(target)}; Routing will decide`);
+      else setRevisionNotice("Reviewer requested one Routing revision");
     }
 
     triggerPulse(event);
@@ -163,7 +160,7 @@ export function RequestDeskWorkspace() {
       <main className="mx-auto max-w-7xl px-5 py-10 sm:px-8 sm:py-14">
         <div className="grid gap-10 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] lg:items-start">
           <section className="min-w-0">
-            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--pegas-border)] bg-white px-3 py-1.5 text-xs font-bold text-[var(--pegas-blue-dark)]"><span className="h-2 w-2 rounded-full bg-[var(--pegas-cyan)]" />Request Desk · Phase 3</span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--pegas-border)] bg-white px-3 py-1.5 text-xs font-bold text-[var(--pegas-blue-dark)]"><span className="h-2 w-2 rounded-full bg-[var(--pegas-cyan)]" />Request Desk · Phase 4</span>
             <h1 className="mt-5 max-w-2xl text-4xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-5xl">One request. The right team.</h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-slate-600">Watch one self-hosted model intake, protect, route, and review a fictional request with inspectable agent handoffs.</p>
 

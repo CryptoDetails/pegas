@@ -26,12 +26,13 @@ export type PrivacyDecision = {
   clarification_question: string | null;
 };
 
-export type DepartmentProposal = {
+export type RoutingDecision = {
   department: Department;
   summary: string;
   priority: Priority;
   confidentiality: Confidentiality;
-  department_note: string;
+  routing_reason: string;
+  department_brief: string;
   next_action: string;
   open_questions: string[];
   evidence: string[];
@@ -93,4 +94,4 @@ export type Handoff = {
   created_at: string;
 };
 
-export type AgentId = "intake_agent" | "privacy_agent" | "technical_agent" | "business_agent" | "finance_agent" | "reviewer_agent";
+export type AgentId = "intake_agent" | "privacy_agent" | "routing_agent" | "reviewer_agent";
