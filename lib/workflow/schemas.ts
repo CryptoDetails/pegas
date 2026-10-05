@@ -1,10 +1,8 @@
 import type {
-  Confidentiality,
   Department,
   RoutingDecision,
   IntakeAssessment,
   PrivacyDecision,
-  Priority,
   ReviewDecision,
 } from "./types";
 

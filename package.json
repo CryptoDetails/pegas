@@ -10,12 +10,23 @@
     "test:phase2": "node --experimental-strip-types scripts/phase2-correction-tests.ts",
     "test:phase3": "node --experimental-strip-types scripts/phase3-privacy-tests.ts",
     "test:phase4:routing": "node --experimental-strip-types scripts/phase4-routing-tests.ts",
-    "test:phase4:evaluation": "node --experimental-strip-types scripts/phase4-evaluation-tests.ts"
+    "test:phase4:evaluation": "node --experimental-strip-types scripts/phase4-evaluation-tests.ts",
+    "test:payments:policy": "node --experimental-strip-types scripts/payment-policy-tests.ts",
+    "test:payments:protocol": "node --experimental-strip-types scripts/payment-protocol-tests.ts",
+    "test:payments:workflow": "node --experimental-strip-types scripts/payment-workflow-tests.ts",
+    "test:payments:all": "npm run test:payments:policy && npm run test:payments:protocol && npm run test:payments:workflow",
+    "payments:setup-check": "node --experimental-strip-types scripts/payment-setup-check.ts",
+    "payments:live-smoke": "node --experimental-strip-types scripts/payment-live-smoke.ts"
   },
   "dependencies": {
+    "@solana/kit": "5.1.0",
+    "@upstash/redis": "1.35.4",
+    "@x402/core": "2.25.0",
+    "@x402/svm": "2.25.0",
     "next": "16.3.8",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

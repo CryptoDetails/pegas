@@ -4,7 +4,7 @@ import { buildPrivacyRoutingContext } from "../lib/workflow/privacy.ts";
 import { decideReviewPath } from "../lib/workflow/correction.ts";
 import type { IntakeAssessment, PrivacyDecision, ReviewDecision, RoutingDecision } from "../lib/workflow/types";
 assert.deepEqual(DEPARTMENT_PROFILES.map(x=>x.id),["technical","business","finance"]);
-assert.equal(DEPARTMENT_PROFILES.some((x:any)=>"agent_id" in x),false);
+assert.equal(DEPARTMENT_PROFILES.some(x=>"agent_id" in x),false);
 const intake:IntakeAssessment={summary:"s",request_type:"partnership",department_candidate:"business",priority:"medium",confidentiality:"confidential",privacy_review_needed:true,route_reason:"r",evidence:[],missing_information:[],clarification_question:null};
 const privacy:PrivacyDecision={decision:"continue",confidentiality:"confidential",safe_brief:"safe commercial brief",reason:"reduce",recipient_restrictions:["minimum only"],withheld_field_names:["sanitized_request"],evidence:[],clarification_question:null};
 const normal={sanitized_request:"fictional request",intake,department_profiles:DEPARTMENT_PROFILES}; assert.equal("sanitized_request" in normal,true);

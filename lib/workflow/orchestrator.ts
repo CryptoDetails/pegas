@@ -6,7 +6,7 @@ import { INTAKE_SYSTEM_PROMPT, PRIVACY_SYSTEM_PROMPT, REVIEWER_SYSTEM_PROMPT, RO
 import { intakeSchema, privacySchema, reviewSchema, routingSchema, validateIntake, validatePrivacy, validateReview, validateRouting, type ValidationResult } from "./schemas";
 import { sanitizeRequest } from "./sanitize";
 import { buildPrivacyRoutingContext, privacyTerminalDecision, shouldRunPrivacy } from "./privacy";
-import type { AgentId, Department, FinalRequestCard, IntakeAssessment, PrivacyDecision, RoutingDecision, ReviewDecision, WorkflowEvent } from "./types";
+import type { AgentId, Department, FinalRequestCard, IntakeAssessment, PrivacyDecision, RoutingDecision, WorkflowEvent } from "./types";
 
 const WORKFLOW_DEADLINE_MS = 180_000;
 const MODEL_ATTEMPT_MS = 120_000;

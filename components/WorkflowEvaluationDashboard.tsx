@@ -32,7 +32,7 @@ export function WorkflowEvaluationDashboard({ cases }: { cases: WorkflowEvaluati
     for(let i=0;i<cases.length;i++){
       const c=cases[i]; const events:WorkflowEvent[]=[]; const started=performance.now();
       try {
-        const response=await fetch("/api/workflows/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:c.message})});
+        const response=await fetch("/api/workflows/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:c.message,scenario:"standard"})});
         if(!response.ok||!response.body) throw new Error("request_failed");
         const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer="";
         while(true){ const {value,done}=await reader.read(); if(done) break; buffer+=decoder.decode(value,{stream:true}); const frames=buffer.split("\n\n"); buffer=frames.pop()??""; for(const frame of frames){ const line=frame.split("\n").find(x=>x.startsWith("data: ")); if(line) events.push(JSON.parse(line.slice(6)) as WorkflowEvent); } }

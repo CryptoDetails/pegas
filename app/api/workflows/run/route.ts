@@ -1,41 +1,28 @@
 import { runWorkflow } from "@/lib/workflow/orchestrator";
-import type { WorkflowEvent } from "@/lib/workflow/types";
+import type { WorkflowEvent, WorkflowScenario } from "@/lib/workflow/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
 
-function invalidInput(message: string) {
-  return Response.json({ error: { code: "INVALID_INPUT", message } }, { status: 400, headers: { "Cache-Control": "no-store" } });
-}
+function invalidInput(message: string, status=400) { return Response.json({ error: { code: status===409?"CONFLICT":"INVALID_INPUT", message } }, { status, headers: { "Cache-Control": "no-store" } }); }
+function cookie(request:Request,name:string){const raw=request.headers.get("cookie")??"";for(const item of raw.split(";")){const [k,...rest]=item.trim().split("=");if(k===name)return decodeURIComponent(rest.join("="));}return null;}
+function sseHeaders(setCookie?:string){const h:Record<string,string>={"Content-Type":"text/event-stream; charset=utf-8","Cache-Control":"no-store, no-transform",Connection:"keep-alive","X-Accel-Buffering":"no"};if(setCookie)h["Set-Cookie"]=setCookie;return h;}
+function replayCompleted(runId:string,payload:unknown,setCookie?:string){const event:WorkflowEvent={event_version:1,run_id:runId,event_id:crypto.randomUUID(),seq:1,type:"workflow_completed",timestamp:new Date().toISOString(),step_id:"workflow",agent_id:null,payload};return new Response(`event: workflow_event\ndata: ${JSON.stringify(event)}\n\n`,{status:200,headers:sseHeaders(setCookie)});}
 
 export async function POST(request: Request) {
-  let body: unknown;
-  try { body = await request.json(); } catch { return invalidInput("Request body must be valid JSON."); }
+  let body: unknown; try { body = await request.json(); } catch { return invalidInput("Request body must be valid JSON."); }
   if (typeof body !== "object" || body === null || !("message" in body) || typeof body.message !== "string") return invalidInput("message must be a string.");
-  const message = body.message.trim();
-  if (!message) return invalidInput("message must not be empty.");
-  if (message.length > 4000) return invalidInput("message must be 4,000 characters or fewer.");
+  const message = body.message.trim(); if (!message) return invalidInput("message must not be empty."); if (message.length > 4000) return invalidInput("message must be 4,000 characters or fewer.");
+  const scenarioRaw="scenario" in body?(body as {scenario?:unknown}).scenario:undefined;const scenario:WorkflowScenario=scenarioRaw===undefined?"standard":scenarioRaw==="standard"||scenarioRaw==="paid_legal"?scenarioRaw:((null as unknown) as WorkflowScenario);if(!scenario)return invalidInput("scenario must be standard or paid_legal.");
 
-  const encoder = new TextEncoder();
-  let terminal = false;
-  const runController = new AbortController();
-  const abortRun = () => runController.abort();
-  request.signal.addEventListener("abort", abortRun, { once: true });
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const send = (event: WorkflowEvent) => {
-        if (terminal) return;
-        try { controller.enqueue(encoder.encode(`event: workflow_event\ndata: ${JSON.stringify(event)}\n\n`)); } catch { return; }
-        if (event.type === "workflow_completed" || event.type === "workflow_failed") terminal = true;
-      };
-      void runWorkflow(message, send, runController.signal).finally(() => {
-        request.signal.removeEventListener("abort", abortRun);
-        try { controller.close(); } catch { /* already closed */ }
-      });
-    },
-    cancel() { runController.abort(); },
-  });
-
-  return new Response(stream, { status: 200, headers: { "Content-Type":"text/event-stream; charset=utf-8", "Cache-Control":"no-store, no-transform", Connection:"keep-alive", "X-Accel-Buffering":"no" } });
+  if(scenario==="standard") return streamStandard(message,request);
+  const clientRequestId=(body as {client_request_id?:unknown}).client_request_id;if(typeof clientRequestId!=="string"||clientRequestId.length<8||clientRequestId.length>128)return invalidInput("paid_legal requires a valid client_request_id.");
+  const [{validatePaymentConfig},{PaymentLedger},{runPaidWorkflow}]=await Promise.all([import("@/lib/payments/config"),import("@/lib/payments/store"),import("@/lib/workflow/paid-orchestrator")]);const checked=validatePaymentConfig();if(!checked.ok)return Response.json({error:{code:"PAID_FEATURE_UNAVAILABLE",message:"Paid legal consultation is not configured.",details:checked.errors}},{status:503,headers:{"Cache-Control":"no-store"}});
+  const existingSession=cookie(request,"pegas_session");const sessionScope=existingSession??crypto.randomUUID();const setCookie=existingSession?undefined:`pegas_session=${encodeURIComponent(sessionScope)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${process.env.NODE_ENV==="production"?"; Secure":""}`;const ledger=new PaymentLedger(checked.config);try{if(!(await ledger.ping()))throw new Error("redis_ping_failed");}catch{return Response.json({error:{code:"PAID_LEDGER_UNAVAILABLE",message:"Paid mode requires its durable payment ledger before any model or payment call."}},{status:503,headers:{"Cache-Control":"no-store"}});}
+  const candidateRunId=crypto.randomUUID();const candidateOperationId=`op_${crypto.randomUUID()}`;const admission=await ledger.admit({sessionScope,clientRequestId,message,runId:candidateRunId,operationId:candidateOperationId}).catch(()=>null);if(!admission)return Response.json({error:{code:"PAID_LEDGER_UNAVAILABLE",message:"Paid operation admission failed closed."}},{status:503,headers:{"Cache-Control":"no-store"}});if(admission.kind==="conflict")return invalidInput("client_request_id was already used with different input or scenario.",409);if(admission.kind==="existing"){if(admission.record?.workflow_result)return replayCompleted(admission.record.run_id,admission.record.workflow_result,setCookie);return Response.json({error:{code:"DUPLICATE_OPERATION_INCOMPLETE",message:"This paid operation already exists. It will not be rerun or re-authorized automatically."},operation_id:admission.record?.operation_id??null},{status:409,headers:{"Cache-Control":"no-store",...(setCookie?{"Set-Cookie":setCookie}:{})}});}
+  return streamPaid({message,request,runId:candidateRunId,operationId:candidateOperationId,sessionScope,setCookie,runPaidWorkflow});
 }
+
+function streamStandard(message:string,request:Request){const encoder=new TextEncoder();let terminal=false;const runController=new AbortController();const abortRun=()=>runController.abort();request.signal.addEventListener("abort",abortRun,{once:true});const stream=new ReadableStream<Uint8Array>({start(controller){const send=(event:WorkflowEvent)=>{if(terminal)return;try{controller.enqueue(encoder.encode(`event: workflow_event\ndata: ${JSON.stringify(event)}\n\n`));}catch{return}if(event.type==="workflow_completed"||event.type==="workflow_failed")terminal=true};void runWorkflow(message,send,runController.signal).finally(()=>{request.signal.removeEventListener("abort",abortRun);try{controller.close()}catch{}})},cancel(){runController.abort()}});return new Response(stream,{status:200,headers:sseHeaders()});}
+function streamPaid(args:{message:string;request:Request;runId:string;operationId:string;sessionScope:string;setCookie?:string;runPaidWorkflow:typeof import("@/lib/workflow/paid-orchestrator").runPaidWorkflow}){const encoder=new TextEncoder();let terminal=false;const runController=new AbortController();const abortRun=()=>runController.abort();args.request.signal.addEventListener("abort",abortRun,{once:true});const absoluteDeadline=Date.now()+180_000;const stream=new ReadableStream<Uint8Array>({start(controller){const send=(event:WorkflowEvent)=>{if(terminal)return;try{controller.enqueue(encoder.encode(`event: workflow_event\ndata: ${JSON.stringify(event)}\n\n`));}catch{return}if(event.type==="workflow_completed"||event.type==="workflow_failed")terminal=true};void args.runPaidWorkflow({rawMessage:args.message,runId:args.runId,operationId:args.operationId,sessionScope:args.sessionScope,absoluteDeadline,emitExternal:send,signal:runController.signal}).finally(()=>{args.request.signal.removeEventListener("abort",abortRun);try{controller.close()}catch{}})},cancel(){runController.abort()}});return new Response(stream,{status:200,headers:sseHeaders(args.setCookie)});}

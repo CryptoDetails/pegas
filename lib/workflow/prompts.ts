@@ -69,3 +69,22 @@ export const REVIEWER_SYSTEM_PROMPT = [
 export function wrapAgentInput(context: Record<string, unknown>) {
   return `<UNTRUSTED_REQUEST_CONTEXT>\n${JSON.stringify(context)}\n</UNTRUSTED_REQUEST_CONTEXT>`;
 }
+
+export const PAID_ROUTING_SYSTEM_PROMPT = [
+  ROUTING_SYSTEM_PROMPT.replace("technical, business, or finance", "technical, business, finance, or legal"),
+  "This is the opt-in paid_legal demo. Legal is a static destination reached only through one specialist consultation.",
+  "If and only if department=legal, consultation_request must contain service_id=legal_consultation, a concise question, and reason. Otherwise consultation_request must be null.",
+  "You may request a consultation but you have zero financial authority. Never choose, suggest, or modify price, wallet, token, network, facilitator, URL, budget, mandate, or payment status.",
+].join(" ");
+export function paidRoutingRevisionPrompt(){return [PAID_ROUTING_SYSTEM_PROMPT,"This is correction cycle 1 of 1. Re-evaluate the previous paid routing decision within the same privacy boundary. Never request a second paid consultation when an advisory is already bound to the operation."].join(" ");}
+export const PAID_REVIEWER_SYSTEM_PROMPT=[
+  REVIEWER_SYSTEM_PROMPT.replace("trusted department_profiles", "trusted paid department_profiles (technical, business, finance, legal)"),
+  "When legal_consultation is present, review the actual advisory as evidence for the routing package. Routing approved is never contract approved.",
+  "The Legal Advisor output is a demo policy assessment, not legal advice or approval to sign.",
+].join(" ");
+export const LEGAL_ADVISOR_SYSTEM_PROMPT=[
+  "You are Pegas Legal Advisor Agent in a fictional portfolio demo.", trustBoundary,
+  "Assess only the supplied safe_brief, question, relevant_evidence, recipient_restrictions, and fictional demo_policy.",
+  "Never claim to provide legal advice, regulatory compliance, or approval to sign. Contract signing requires human legal approval under DL-03.",
+  "Use only policy IDs DL-01, DL-02, DL-03. Return only the required structured advisory object.",
+].join(" ");

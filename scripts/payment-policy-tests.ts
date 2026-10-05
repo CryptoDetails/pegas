@@ -1,0 +1,31 @@
+import assert from "node:assert/strict";
+import { createAgentMandate, fingerprintMandate, withMandateState } from "../lib/payments/mandate.ts";
+import { resolveAgent, verifyRegistryBindings } from "../lib/payments/agent-registry.ts";
+import { evaluateMandatePolicy } from "../lib/payments/policy.ts";
+import { buildPublicEvidence } from "../lib/payments/evidence.ts";
+import { SOLANA_DEVNET_CAIP2, DEVNET_USDC_MINT, type X402PaymentRequirement } from "../lib/payments/types.ts";
+import type { PaymentConfig } from "../lib/payments/config.ts";
+
+const config:PaymentConfig={enabled:true,facilitatorUrl:"https://x402.org/facilitator",network:SOLANA_DEVNET_CAIP2,assetMint:DEVNET_USDC_MINT,rpcUrl:"https://example.invalid/rpc",buyerPrivateKey:"secret-never-public",buyerAddress:"Buyer11111111111111111111111111111111111",legalPayTo:"Seller1111111111111111111111111111111111",legalServiceBaseUrl:"https://pegas.example",legalServiceAuthSecret:"internal-secret",amountAtomic:"10000",maxPerOperationAtomic:"10000",maxDailyAtomic:100000n,maxPerSessionAtomic:30000n,redisUrl:"https://redis.invalid",redisToken:"redis-secret"};
+const now=Date.parse("2026-10-05T12:00:00.000Z");
+const mandate=createAgentMandate({operationId:"op-test",purpose:"Review NDA",absoluteDeadline:now+120000,config,now});
+assert.equal(mandate.max_amount_atomic,"10000");assert.equal(mandate.allowed_payee,config.legalPayTo);assert.equal(mandate.network,SOLANA_DEVNET_CAIP2);assert.equal(mandate.asset_mint,DEVNET_USDC_MINT);assert.equal(mandate.max_authorizations,1);
+const {fingerprint_sha256,...raw}=mandate;assert.equal(fingerprintMandate(raw),fingerprint_sha256,"mandate fingerprint must be deterministic over canonical authority fields");
+for(const state of ["consumed","revoked","expired"] as const)assert.equal(withMandateState(mandate,state).fingerprint_sha256,mandate.fingerprint_sha256,"mandate fingerprint must stay stable across lifecycle state changes");
+assert.equal(verifyRegistryBindings(config).ok,true);assert.equal(resolveAgent(config,"pegas:routing-agent:v1")?.payment_address,config.buyerAddress);assert.equal(resolveAgent(config,"pegas:legal-advisor:v1")?.payment_address,config.legalPayTo);
+const quote:X402PaymentRequirement={scheme:"exact",network:config.network,amount:"10000",asset:config.assetMint,payTo:config.legalPayTo,maxTimeoutSeconds:60,extra:{paymentFlow:"upfront",feePayer:"Fee111111111111111111111111111111111111"}};
+function decision(overrides:Partial<Parameters<typeof evaluateMandatePolicy>[0]>={}){return evaluateMandatePolicy({config,mandate,buyer:resolveAgent(config,"pegas:routing-agent:v1"),seller:resolveAgent(config,"pegas:legal-advisor:v1"),quote,resourceUrl:"https://pegas.example/api/paid-services/legal-consultation",expectedResourceUrl:"https://pegas.example/api/paid-services/legal-consultation",recipientRestrictions:[],authorizationCount:0,remainingMs:60000,budgetAvailable:true,now,...overrides});}
+const ok=decision();assert.equal(ok.decision,"approved");assert.deepEqual(ok.controls.map(c=>c.id),["AUTH-01","AUTH-02","AUTH-03","AUTH-04","AUTH-05","AUTH-06","AUTH-07","AUTH-08","AUTH-09","AUTH-10"]);assert.equal(ok.controls.every(c=>c.passed),true);
+for(const state of ["expired","revoked","consumed"] as const)assert.equal(decision({mandate:withMandateState(mandate,state)}).decision,"declined",`${state} mandate must block signing`);
+assert.equal(decision({seller:{...resolveAgent(config,"pegas:legal-advisor:v1")!,payment_address:"OtherWallet"}}).decision,"declined","registry mismatch must block signing");
+assert.equal(decision({quote:{...quote,payTo:"OtherWallet"}}).decision,"declined","payee expansion must be rejected");
+assert.equal(decision({quote:{...quote,amount:"20000"}}).decision,"declined","broader amount quote must be rejected");
+assert.equal(decision({quote:{...quote,network:"solana:wrong"}}).decision,"declined","network expansion must be rejected");
+assert.equal(decision({quote:{...quote,asset:"WrongMint"}}).decision,"declined","asset expansion must be rejected");
+assert.equal(decision({authorizationCount:1}).decision,"declined","one authorization limit must be enforced");
+assert.equal(decision({recipientRestrictions:["do not forward externally"]}).decision,"declined","recipient restriction must block signing");
+assert.equal(decision({budgetAvailable:false}).decision,"declined","budget control must block signing");
+const evidence=buildPublicEvidence({config,operationId:"op-test",mandate,policy:ok,feePayer:"Fee111111111111111111111111111111111111",deliveryStatus:"not_started"});
+const publicJson=JSON.stringify(evidence);for(const secret of [config.buyerPrivateKey,config.legalServiceAuthSecret,config.redisToken,config.rpcUrl])assert.equal(publicJson.includes(secret),false,"public evidence must not expose secrets");
+assert.equal(evidence.identity.registry_label,"KYA-lite | Demo identity registry");assert.equal(evidence.settlement.amount_atomic,"10000");assert.equal(evidence.settlement.protocol_version,2);
+console.log("Agentic payment policy tests passed.");
