@@ -120,3 +120,20 @@ select {
   color: #0f172a;
   font-weight: 700;
 }
+
+:root {
+  --pegas-blue: #4f5df5;
+  --pegas-blue-dark: #3342cc;
+  --pegas-blue-soft: #f0f2ff;
+  --pegas-cyan: #18d0ff;
+  --pegas-violet: #8b5cf6;
+  --pegas-border: #cfd5ff;
+  --pegas-gradient: linear-gradient(110deg, var(--pegas-blue), var(--pegas-violet));
+}
+
+@keyframes handoff-travel {
+  from { transform: translate(0, -50%); opacity: 0; }
+  18% { opacity: 1; }
+  to { transform: translate(74px, -50%); opacity: 0; }
+}
+.handoff-pulse { animation: handoff-travel 700ms ease-out both; }

@@ -1,5 +1,2 @@
-import { TriageWorkspace } from "@/components/TriageWorkspace";
-
-export default function HomePage() {
-  return <TriageWorkspace />;
-}
+import { RequestDeskWorkspace } from "@/components/RequestDeskWorkspace";
+export default function HomePage() { return <RequestDeskWorkspace />; }
