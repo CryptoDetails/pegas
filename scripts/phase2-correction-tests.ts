@@ -1,8 +1,11 @@
 import { strict as assert } from "node:assert";
-import { decideReviewPath } from "../lib/workflow/correction.ts";
-import type { Department, DepartmentProposal, ReviewDecision } from "../lib/workflow/types.ts";
+import { decideReviewPath } from "../lib/workflow/correction";
+import type { Department, DepartmentProposal, ReviewDecision } from "../lib/workflow/types";
 
-const proposal = (department: Department, confidentiality: DepartmentProposal["confidentiality"] = "internal"): DepartmentProposal => ({
+const proposal = (
+  department: Department,
+  confidentiality: DepartmentProposal["confidentiality"] = "internal",
+): DepartmentProposal => ({
   department,
   summary: "demo",
   priority: "medium",
@@ -39,6 +42,7 @@ function simulateCorrectionPath(args: {
   let currentDepartment = args.initialDepartment;
   let currentProposal = args.firstProposal ?? proposal(currentDepartment);
   const callsAfterReviewer1: string[] = [];
+
   const first = decideReviewPath({
     review: args.review1,
     currentDepartment,
@@ -46,7 +50,11 @@ function simulateCorrectionPath(args: {
     correctionCycleUsed: false,
   });
 
-  if (first.action === "approve" || first.action === "needs_information" || first.action === "manual_review") {
+  if (
+    first.action === "approve" ||
+    first.action === "needs_information" ||
+    first.action === "manual_review"
+  ) {
     return {
       callsAfterReviewer1,
       finalAction: first.action,
@@ -58,6 +66,7 @@ function simulateCorrectionPath(args: {
   currentDepartment = first.target_department;
   callsAfterReviewer1.push(`${currentDepartment}_agent`, "reviewer_agent");
   currentProposal = proposal(currentDepartment);
+
   const second = decideReviewPath({
     review: args.review2 ?? review({ decision: "approved" }),
     currentDepartment,
@@ -82,7 +91,11 @@ const sameDepartment = simulateCorrectionPath({
   }),
   review2: review({ decision: "approved" }),
 });
-assert.deepEqual(sameDepartment.callsAfterReviewer1, ["technical_agent", "reviewer_agent"]);
+
+assert.deepEqual(sameDepartment.callsAfterReviewer1, [
+  "technical_agent",
+  "reviewer_agent",
+]);
 assert.equal(sameDepartment.finalAction, "approve");
 assert.equal(sameDepartment.revisionCount, 1);
 
@@ -96,6 +109,7 @@ const reroute = simulateCorrectionPath({
   }),
   review2: review({ decision: "approved" }),
 });
+
 assert.deepEqual(reroute.callsAfterReviewer1, ["finance_agent", "reviewer_agent"]);
 assert.equal(reroute.finalDepartment, "finance");
 assert.equal(reroute.finalAction, "approve");
@@ -104,9 +118,16 @@ assert.equal(reroute.revisionCount, 1);
 const secondRevisionStops = simulateCorrectionPath({
   initialDepartment: "technical",
   review1: review({ decision: "revise", reason: "Refine the proposal." }),
-  review2: review({ decision: "revise", reason: "One more change is needed." }),
+  review2: review({
+    decision: "revise",
+    reason: "One more change is needed.",
+  }),
 });
-assert.deepEqual(secondRevisionStops.callsAfterReviewer1, ["technical_agent", "reviewer_agent"]);
+
+assert.deepEqual(secondRevisionStops.callsAfterReviewer1, [
+  "technical_agent",
+  "reviewer_agent",
+]);
 assert.equal(secondRevisionStops.finalAction, "manual_review");
 
 const sensitivityBeforeCorrection = simulateCorrectionPath({
@@ -117,6 +138,7 @@ const sensitivityBeforeCorrection = simulateCorrectionPath({
     reason: "Restricted data needs privacy review.",
   }),
 });
+
 assert.deepEqual(sensitivityBeforeCorrection.callsAfterReviewer1, []);
 assert.equal(sensitivityBeforeCorrection.finalAction, "manual_review");
 assert.equal(sensitivityBeforeCorrection.revisionCount, 0);
@@ -130,7 +152,10 @@ const departmentSensitivityBeforeCorrection = simulateCorrectionPath({
     reason: "Move this request.",
   }),
 });
+
 assert.deepEqual(departmentSensitivityBeforeCorrection.callsAfterReviewer1, []);
 assert.equal(departmentSensitivityBeforeCorrection.finalAction, "manual_review");
 
-console.log("Phase 2 deterministic correction tests passed (5 acceptance paths).");
+console.log(
+  "Phase 2 deterministic correction tests passed (5 acceptance paths).",
+);
