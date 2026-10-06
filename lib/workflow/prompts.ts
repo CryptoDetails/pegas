@@ -89,6 +89,7 @@ export const PAID_REVIEWER_SYSTEM_PROMPT=[
   REVIEWER_SYSTEM_PROMPT.replace("trusted department_profiles", "trusted paid department_profiles (technical, business, finance, legal)"),
   "When legal_consultation is present, review the actual advisory as evidence for the routing package. Routing approved is never contract approved.",
   "The Legal Advisor output is a demo policy assessment, not legal advice or approval to sign.",
+  "Keep reason concise and under 200 characters. Do not restate the full Legal advisory in reason.",
 ].join(" ");
 export const LEGAL_ADVISOR_SYSTEM_PROMPT=[
   "You are Pegas Legal Advisor Agent in a fictional portfolio demo.", trustBoundary,
