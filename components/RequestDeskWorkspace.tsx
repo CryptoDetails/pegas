@@ -46,6 +46,7 @@ export function RequestDeskWorkspace() {
   const [card, setCard] = useState<FinalRequestCard | null>(null);
   const [status, setStatus] = useState<"idle" | "running" | "failed" | "interrupted">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [backendResponded, setBackendResponded] = useState(false);
   const [validationDetail, setValidationDetail] = useState<string | null>(null);
   const [pulse, setPulse] = useState<HandoffPulse>(null);
@@ -59,6 +60,8 @@ export function RequestDeskWorkspace() {
   const demoFormRef = useRef<HTMLDivElement>(null);
   const busy = status === "running";
   const paidMode = scenario === "paid_legal";
+  const paymentGuardrailStopped = errorCode === "payment_declined" && (validationDetail === "rate_limit" || validationDetail === "session_budget" || validationDetail === "daily_budget");
+  const legalDeliveryIncomplete = errorCode === "legal_delivery_failed";
 
   const compactEvents = useMemo(() => events.filter((e) => e.type !== "heartbeat").slice(-24), [events]);
   const liveLabel = useMemo(() => {
@@ -125,7 +128,8 @@ export function RequestDeskWorkspace() {
       setActivityOpen(false);
     }
     if (event.type === "workflow_failed") {
-      const p = event.payload as { message?: string; backend_response_received?: boolean; validation_detail?: string | null };
+      const p = event.payload as { code?: string; message?: string; backend_response_received?: boolean; validation_detail?: string | null };
+      setErrorCode(p.code ?? null);
       setBackendResponded(Boolean(p.backend_response_received));
       setValidationDetail(p.validation_detail ?? null);
       setError(p.message ?? "Workflow failed safely.");
@@ -143,6 +147,7 @@ export function RequestDeskWorkspace() {
     setStates(initialStates);
     setSelected(null);
     setError(null);
+    setErrorCode(null);
   }
 
   function focusAgenticFinanceDemo() {
@@ -159,6 +164,7 @@ export function RequestDeskWorkspace() {
     setSelected(null);
     setCard(null);
     setError(null);
+    setErrorCode(null);
     setBackendResponded(false);
     setValidationDetail(null);
     setEvents([]);
@@ -252,11 +258,11 @@ export function RequestDeskWorkspace() {
             <WorkflowGraph states={states} selected={selected} pulse={pulse} manual={manual} paidMode={paidMode} />
             <AgenticFinanceTimeline events={events} active={paidMode} />
             {(error || status === "interrupted") && (
-              <div className="rounded-3xl border border-rose-200 bg-rose-50 p-5">
-                <p className="text-sm font-bold text-rose-800">{status === "interrupted" ? "Interrupted" : "Workflow error"}</p>
-                <p className="mt-2 text-sm leading-6 text-rose-700">{error}</p>
-                {backendResponded && <p className="mt-2 text-xs font-semibold text-rose-700">Backend response received. The failure happened during structured-output validation.</p>}
-                {validationDetail && <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 font-mono text-[11px] leading-5 text-rose-800">{validationDetail}</p>}
+              <div className={`rounded-3xl border p-5 ${legalDeliveryIncomplete || paymentGuardrailStopped ? "border-amber-200 bg-amber-50" : "border-rose-200 bg-rose-50"}`}>
+                <p className={`text-sm font-bold ${legalDeliveryIncomplete || paymentGuardrailStopped ? "text-amber-900" : "text-rose-800"}`}>{status === "interrupted" ? "Interrupted" : legalDeliveryIncomplete ? "Payment verified · Legal delivery incomplete" : paymentGuardrailStopped ? "Payment guardrail stopped this run" : "Workflow error"}</p>
+                <p className={`mt-2 text-sm leading-6 ${legalDeliveryIncomplete || paymentGuardrailStopped ? "text-amber-800" : "text-rose-700"}`}>{error}</p>
+                {!legalDeliveryIncomplete && !paymentGuardrailStopped && backendResponded && <p className="mt-2 text-xs font-semibold text-rose-700">Backend response received. The failure happened during structured-output validation.</p>}
+                {!legalDeliveryIncomplete && !paymentGuardrailStopped && validationDetail && <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 font-mono text-[11px] leading-5 text-rose-800">{validationDetail}</p>}
               </div>
             )}
             {card && <WorkflowResultCard card={card} />}

@@ -16,6 +16,7 @@ export type PaymentConfig = {
   maxPerOperationAtomic: "10000";
   maxDailyAtomic: bigint;
   maxPerSessionAtomic: bigint;
+  maxAuthorizationsPerHour: number;
   redisUrl: string;
   redisToken: string;
 };
@@ -25,6 +26,12 @@ function positiveAtomic(name: string, fallback: string) {
   const raw = value(name) || fallback;
   if (!/^\d+$/.test(raw) || BigInt(raw) <= 0n) throw new Error(`${name} must be a positive atomic integer.`);
   return BigInt(raw);
+}
+function positiveInteger(name: string, fallback: string) {
+  const raw = value(name) || fallback;
+  const parsed = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`${name} must be a positive integer.`);
+  return parsed;
 }
 
 export function readPaymentConfig(): PaymentConfig {
@@ -44,8 +51,9 @@ export function readPaymentConfig(): PaymentConfig {
     legalServiceAuthSecret: value("LEGAL_SERVICE_AUTH_SECRET"),
     amountAtomic: amount as "10000",
     maxPerOperationAtomic: maxOp as "10000",
-    maxDailyAtomic: positiveAtomic("PAYMENT_MAX_DAILY_ATOMIC", "100000"),
-    maxPerSessionAtomic: positiveAtomic("PAYMENT_MAX_PER_SESSION_ATOMIC", "30000"),
+    maxDailyAtomic: positiveAtomic("PAYMENT_MAX_DAILY_ATOMIC", "1000000"),
+    maxPerSessionAtomic: positiveAtomic("PAYMENT_MAX_PER_SESSION_ATOMIC", "100000"),
+    maxAuthorizationsPerHour: positiveInteger("PAYMENT_MAX_AUTHORIZATIONS_PER_HOUR", "10"),
     redisUrl: value("UPSTASH_REDIS_REST_URL"),
     redisToken: value("UPSTASH_REDIS_REST_TOKEN"),
   };
@@ -57,6 +65,7 @@ export function validatePaymentConfig(config = readPaymentConfig(), options:{req
   if (config.network !== SOLANA_DEVNET_CAIP2) errors.push("SOLANA_NETWORK must be the required Solana Devnet CAIP-2 identifier");
   if (config.assetMint !== DEVNET_USDC_MINT) errors.push("SOLANA_USDC_MINT must be the configured Devnet USDC mint");
   if (config.amountAtomic !== LEGAL_AMOUNT_ATOMIC || config.maxPerOperationAtomic !== LEGAL_AMOUNT_ATOMIC) errors.push("legal amount and per-operation ceiling must both equal 10000 atomic");
+  if (!Number.isSafeInteger(config.maxAuthorizationsPerHour) || config.maxAuthorizationsPerHour <= 0) errors.push("PAYMENT_MAX_AUTHORIZATIONS_PER_HOUR must be a positive integer");
   for (const [name, v] of [["SOLANA_RPC_URL",config.rpcUrl],["PAYMENT_BUYER_PRIVATE_KEY",config.buyerPrivateKey],["PAYMENT_BUYER_ADDRESS",config.buyerAddress],["LEGAL_PAY_TO",config.legalPayTo],["LEGAL_SERVICE_BASE_URL",config.legalServiceBaseUrl],["LEGAL_SERVICE_AUTH_SECRET",config.legalServiceAuthSecret],["UPSTASH_REDIS_REST_URL",config.redisUrl],["UPSTASH_REDIS_REST_TOKEN",config.redisToken]] as const) if (!v) errors.push(`${name} is required`);
   if (config.buyerAddress && config.legalPayTo && config.buyerAddress === config.legalPayTo) errors.push("buyer and seller addresses must differ");
   if (config.buyerAddress && !isSolanaPublicKey(config.buyerAddress)) errors.push("PAYMENT_BUYER_ADDRESS must be a valid Solana public key");
