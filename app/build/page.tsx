@@ -1,53 +1,87 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { AgenticStack } from "@/components/AgenticStack";
 import { AppHeader } from "@/components/AppHeader";
-import { DesignThesis } from "@/components/DesignThesis";
-import { FrameworkToPrototype } from "@/components/FrameworkToPrototype";
-import { RealityBoundary } from "@/components/RealityBoundary";
 
 export default function GuidePage() {
   return (
     <div className="min-h-screen">
       <AppHeader active="build" />
       <main className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
-        <span className="rounded-full border border-[var(--pegas-border)] bg-[var(--pegas-blue-soft)] px-3 py-1 text-xs font-bold text-[var(--pegas-blue-dark)]">Architecture & product rationale</span>
-        <h1 className="mt-5 max-w-4xl text-4xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-5xl">How Pegas turns bounded agent authority into a verifiable paid workflow</h1>
-        <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">Pegas keeps self-hosted AI reasoning behind explicit roles, while deterministic server code owns financial authority. The paid Legal path demonstrates how one narrowly scoped authorization can move from mandate to x402 settlement, independent chain evidence and specialist delivery.</p>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">Inspired by Lead&apos;s September 2026 framework for agentic finance. Independent prototype. Not affiliated with or endorsed by Lead.</p>
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--pegas-blue-dark)]">Guide / implementation</p>
+        <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-5xl">
+          How the paid Agentic Finance path works
+        </h1>
+        <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">
+          This guide stays close to implementation: workflow stages, frozen payment terms, deterministic authorization, independent settlement evidence and the boundaries between workflow state and payment state.
+        </p>
+        <Link href="/vision" className="focus-ring mt-5 inline-flex rounded-lg text-sm font-semibold text-[var(--pegas-blue-dark)] hover:text-indigo-700">
+          Why Pegas uses bounded authority → Vision
+        </Link>
 
-        <section className="mt-8 grid gap-5 md:grid-cols-2">
-          <Card title="Request Desk" mono="Intake → optional Privacy → Routing → optional paid Legal Advisor → Reviewer">Technical, Business, Finance and Legal are destinations in the demo workflow. The paid Legal branch adds a specialist only when the route requires it.</Card>
-          <Card title="Deterministic authority" mono="Agent Mandate → KYA-lite → AUTH-01…10 → x402">The LLM may request a consultation. It cannot choose the wallet authority, expand the budget, change the frozen asset/network/payee/amount or bypass deterministic policy.</Card>
-          <Card title="Frozen-first-402 invariant" mono="First 402 terms → freeze → authorize → settle">The first valid payment challenge defines the terms that are checked against authority and signed. Payment terms are not allowed to drift after authorization.</Card>
-          <Card title="Independent evidence" mono="x402 exact/upfront → Solana Devnet → RPC evidence">A payment is not trusted merely because a facilitator reports success. The configured Solana RPC must independently observe a matching transfer before delivery proceeds.</Card>
-          <Card title="Payment-only persistence" mono="Upstash Redis ≠ workflow database">Redis is limited to payment-side idempotency, reservations, budgets/concurrency, receipts/reconciliation and safe already-paid operation reuse where applicable.</Card>
-          <Card title="Self-hosted model runtime" mono="Vercel → Modal → Ollama → qwen3:4b → NVIDIA L4">The public Next.js app runs on Vercel. AI inference runs on Modal with Ollama and qwen3:4b on NVIDIA L4.</Card>
+        <section className="mt-12 border-t border-slate-200">
+          <GuideRow
+            number="01"
+            title="Request and route"
+            mono="Intake → optional Privacy → Routing"
+          >
+            Intake structures the fictional request. Privacy can reduce forwarded context. Routing selects the destination and may choose the paid Legal branch when the scenario requires specialist review.
+          </GuideRow>
+          <GuideRow
+            number="02"
+            title="Check authority before payment"
+            mono="Agent Mandate → KYA-lite → AUTH controls"
+          >
+            The workflow may request a consultation, but deterministic server logic checks the mandate, agent identity, fixed network, asset, payee, amount and budget constraints before any authorization is allowed.
+          </GuideRow>
+          <GuideRow
+            number="03"
+            title="Freeze the first valid payment terms"
+            mono="First 402 → freeze → authorize → settle"
+          >
+            The first valid x402 payment challenge defines the terms that are checked and signed. A later response cannot expand or silently change those approved terms.
+          </GuideRow>
+          <GuideRow
+            number="04"
+            title="Verify settlement independently"
+            mono="x402 V2 → Solana Devnet → configured RPC / Alchemy evidence"
+          >
+            Facilitator success is not treated as final proof on its own. The configured Solana RPC must observe chain evidence matching the approved offer before the paid Legal result is delivered.
+          </GuideRow>
+          <GuideRow
+            number="05"
+            title="Keep payment state narrow"
+            mono="Upstash Redis = payment-side state"
+          >
+            Redis is used for payment-side idempotency, reservations, budgets/concurrency, receipts and reconciliation. It is not used as the general workflow database.
+          </GuideRow>
+          <GuideRow
+            number="06"
+            title="Deliver and review"
+            mono="Legal Advisor → Reviewer → final result"
+          >
+            The paid specialist runs only after confirmed payment evidence. The result then returns to Review, while the payment evidence remains inspectable as a separate factual record.
+          </GuideRow>
         </section>
 
-        <div className="mt-8 space-y-8">
-          <DesignThesis />
-          <FrameworkToPrototype />
-          <AgenticStack />
-          <RealityBoundary />
-        </div>
-
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6">
-          <h2 className="text-xl font-semibold text-slate-950">Operational invariants</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Invariant>LLM reasoning does not own spending authority.</Invariant>
-            <Invariant>Effective authority is the intersection of policy, mandate, identity, quote and budget controls.</Invariant>
-            <Invariant>One mandate allows at most one Legal payment authorization.</Invariant>
-            <Invariant>Payment state and consultation state remain separate.</Invariant>
-            <Invariant>Successful settlement evidence remains meaningful even if a later Legal model step fails.</Invariant>
-            <Invariant>No browser wallet, no mainnet funds and no secret payment material is exposed.</Invariant>
+        <section className="mt-12 grid gap-8 border-y border-slate-200 py-8 lg:grid-cols-2">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Model runtime</p>
+            <p className="mt-3 font-mono text-sm leading-7 text-slate-800">Vercel → Modal → Ollama → qwen3:4b → NVIDIA L4</p>
+            <p className="mt-3 text-sm leading-6 text-slate-600">Self-hosted model inference is separate from deterministic financial controls.</p>
+          </div>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Payment proof</p>
+            <p className="mt-3 font-mono text-sm leading-7 text-slate-800">x402 → Solana Devnet → independent evidence</p>
+            <p className="mt-3 text-sm leading-6 text-slate-600">The payment path remains inspectable without turning the model into the authority layer.</p>
           </div>
         </section>
 
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6">
-          <h2 className="text-xl font-semibold text-slate-950">Evaluation</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">The 12-case workflow evaluation remains standard mode and cannot spend. The older benchmark remains historical single-step evidence.</p>
-          <div className="mt-4 flex flex-wrap gap-3">
+        <section className="mt-12">
+          <h2 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950">Evaluation</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+            The 12-case workflow evaluation remains standard mode and cannot spend. The older benchmark remains historical single-step evidence.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
             <Link href="/evaluation" className="focus-ring inline-flex rounded-xl border border-[var(--pegas-border)] bg-[var(--pegas-blue-soft)] px-4 py-2 text-sm font-semibold text-[var(--pegas-blue-dark)]">Current workflow evaluation</Link>
             <Link href="/benchmark" className="focus-ring inline-flex rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Legacy benchmark</Link>
           </div>
@@ -57,10 +91,15 @@ export default function GuidePage() {
   );
 }
 
-function Card({ title, mono, children }: { title: string; mono: string; children: ReactNode }) {
-  return <div className="rounded-3xl border border-slate-200 bg-white p-6 card-shadow"><p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{title}</p><p className="mt-3 font-mono text-sm text-slate-800">{mono}</p><p className="mt-3 text-sm leading-6 text-slate-600">{children}</p></div>;
-}
-
-function Invariant({ children }: { children: ReactNode }) {
-  return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">{children}</div>;
+function GuideRow({ number, title, mono, children }: { number: string; title: string; mono: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-4 border-b border-slate-200 py-7 last:border-b-0 md:grid-cols-[56px_minmax(0,0.75fr)_minmax(0,1.25fr)] md:gap-8">
+      <span className="text-xs font-bold tracking-[0.16em] text-indigo-400">{number}</span>
+      <div>
+        <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+        <p className="mt-2 font-mono text-xs leading-5 text-slate-500">{mono}</p>
+      </div>
+      <p className="text-sm leading-6 text-slate-600">{children}</p>
+    </div>
+  );
 }

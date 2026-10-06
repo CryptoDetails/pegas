@@ -1,41 +1,53 @@
 const REAL = [
-  "Real qwen3:4b calls on Modal and real self-hosted inference",
-  "Deterministic role orchestration and bounded mandate/policy checks",
-  "Real HTTP 402 challenge and x402 V2 signed test payment",
-  "Real Solana Devnet settlement and Alchemy/configured RPC chain evidence",
-  "Real Upstash payment-side idempotency/state",
-  "Real Legal Advisor result and duplicate-authorization protection",
+  "Real Qwen calls on Modal",
+  "Real x402 402/payment flow",
+  "Real Solana Devnet settlement",
+  "Real Alchemy chain evidence",
+  "Real Upstash payment-side state",
+  "Real deterministic authority checks",
+  "Real paid Legal Advisor",
+  "Real duplicate-payment protection",
 ] as const;
 
 const DEMO = [
-  "Fictional company and request",
-  "Solana Devnet, test USDC and fixed 0.01 test amount",
-  "KYA-lite is a demo identity registry, not bank-grade identity",
-  "Not regulatory compliance and not legal advice",
-  "Not Lead software; no Lead affiliation or endorsement",
-  "No mainnet funds and no browser wallet",
+  "Fictional company/request",
+  "Test USDC",
+  "Solana Devnet",
+  "Fixed 0.01 payment",
+  "KYA-lite identity registry",
+  "Not production identity/compliance infrastructure",
+  "No mainnet funds",
+  "No browser wallet",
 ] as const;
 
 export function RealityBoundary() {
   return (
-    <section className="rounded-[2rem] border border-slate-200 bg-white p-6 card-shadow sm:p-8">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Demo boundary</p>
-      <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">What is real here?</h2>
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <Boundary title="REAL" items={REAL} tone="real" />
-        <Boundary title="DEMO / BOUNDED" items={DEMO} tone="demo" />
+    <section className="border-t border-slate-200 py-14 sm:py-18">
+      <div className="max-w-3xl">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">System boundary</p>
+        <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">What is real. What is deliberately bounded.</h2>
+        <p className="mt-4 text-base leading-7 text-slate-600">The demo is transparent about where production behavior is real and where the environment is intentionally constrained.</p>
+      </div>
+
+      <div className="mt-9 grid gap-10 border-y border-slate-200 py-8 lg:grid-cols-2 lg:gap-16">
+        <Boundary title="Real system behavior" items={REAL} tone="real" />
+        <Boundary title="Demo boundary" items={DEMO} tone="demo" />
       </div>
     </section>
   );
 }
 
 function Boundary({ title, items, tone }: { title: string; items: readonly string[]; tone: "real" | "demo" }) {
-  const classes = tone === "real" ? "border-emerald-100 bg-emerald-50/50" : "border-slate-200 bg-slate-50";
   return (
-    <div className={`rounded-3xl border p-5 ${classes}`}>
-      <p className={`text-xs font-bold tracking-[0.16em] ${tone === "real" ? "text-emerald-700" : "text-slate-500"}`}>{title}</p>
-      <ul className="mt-4 space-y-2.5 text-sm leading-6 text-slate-700">
-        {items.map((item) => <li key={item} className="flex gap-2"><span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-45" /><span>{item}</span></li>)}
+    <div>
+      <p className={`text-xs font-bold uppercase tracking-[0.18em] ${tone === "real" ? "text-emerald-700" : "text-slate-500"}`}>{title}</p>
+      <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-700">
+        {items.map((item) => (
+          <li key={item} className="flex gap-3">
+            <span aria-hidden="true" className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${tone === "real" ? "bg-emerald-500" : "bg-slate-400"}`} />
+            <span>{item}</span>
+          </li>
+        ))}
       </ul>
     </div>
   );

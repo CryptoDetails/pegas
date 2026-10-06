@@ -1,48 +1,76 @@
-const STACK = [
-  ["VERCEL", "Public Next.js app plus deterministic workflow and payment orchestration."],
-  ["MODAL", "Self-hosted inference runtime: Ollama + qwen3:4b on NVIDIA L4."],
-  ["X402", "Machine-native payment challenge, authorization and settlement. V2 · exact · upfront."],
-  ["SOLANA", "Real Devnet settlement using test USDC."],
-  ["ALCHEMY", "Independent Solana RPC evidence used to verify the transaction on-chain. It does not sign or settle the payment."],
-  ["UPSTASH REDIS", "Payment-only state for idempotency, reservations, budgets/concurrency and receipts. Not the workflow database."],
-] as const;
-
 export function AgenticStack() {
   return (
-    <section className="rounded-[2rem] border border-slate-200 bg-white p-6 card-shadow sm:p-8">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Live stack</p>
-      <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">Under the hood</h2>
-      <div className="mt-6 rounded-3xl border border-indigo-100 bg-indigo-50/35 p-5">
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <Path title="AI branch" items={["Browser", "Vercel / Next.js", "deterministic Pegas orchestration", "Modal", "Ollama", "qwen3:4b", "NVIDIA L4"]} />
-          <Path title="Payment branch" items={["Browser", "Vercel / Next.js", "deterministic Pegas orchestration", "bounded authority", "x402", "Solana Devnet", "Alchemy evidence"]} />
-        </div>
-        <div className="mt-4 rounded-2xl border border-dashed border-indigo-200 bg-white/80 px-4 py-3 text-xs font-semibold text-indigo-800">
-          Upstash Redis attaches only to payment-side state. It is not a general persistent workflow engine.
-        </div>
+    <section className="border-t border-slate-200 py-14 sm:py-18">
+      <div className="max-w-3xl">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Live stack</p>
+        <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">Under the hood</h2>
+        <p className="mt-4 text-base leading-7 text-slate-600">
+          One deterministic orchestration layer separates model reasoning from payment authority, then independently verifies what settled on-chain.
+        </p>
       </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {STACK.map(([name, description]) => (
-          <div key={name} className="rounded-2xl border border-slate-200 p-4">
-            <p className="text-[11px] font-bold tracking-[0.14em] text-[var(--pegas-blue-dark)]">{name}</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
+
+      <div className="mt-10">
+        <div className="mx-auto max-w-3xl text-center">
+          <FlowNode label="Browser" />
+          <FlowLine />
+          <FlowNode label="Vercel / Next.js" detail="public app + server orchestration" />
+          <FlowLine />
+          <FlowNode label="Deterministic Pegas orchestration" detail="identity, mandate, limits, authorization, evidence gates" strong />
+        </div>
+
+        <div className="mx-auto mt-6 h-8 w-px bg-slate-300" />
+        <div className="mx-auto h-px max-w-4xl bg-slate-300" />
+        <div className="mx-auto grid max-w-5xl gap-8 pt-7 lg:grid-cols-2 lg:gap-16">
+          <ArchitectureBranch
+            eyebrow="AI path"
+            title="Reasoning stays probabilistic"
+            steps={["Modal", "Ollama", "qwen3:4b", "NVIDIA L4"]}
+          />
+          <ArchitectureBranch
+            eyebrow="Payment path"
+            title="Authority stays deterministic"
+            steps={["Bounded authority", "x402 V2", "Solana Devnet", "Alchemy evidence"]}
+          />
+        </div>
+
+        <div className="mx-auto mt-9 max-w-5xl border-t border-dashed border-indigo-200 pt-5">
+          <div className="grid gap-2 sm:grid-cols-[170px_minmax(0,1fr)] sm:items-start">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">Upstash Redis</p>
+            <p className="text-sm leading-6 text-slate-600">
+              Payment-side idempotency, reservations, budgets/concurrency and receipt state. It is attached to the payment path, not used as a general workflow database.
+            </p>
           </div>
-        ))}
+        </div>
       </div>
     </section>
   );
 }
 
-function Path({ title, items }: { title: string; items: readonly string[] }) {
+function FlowNode({ label, detail, strong = false }: { label: string; detail?: string; strong?: boolean }) {
   return (
-    <div className="rounded-2xl border border-white bg-white/80 p-4">
-      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-500">{title}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-700">
-        {items.map((item, index) => (
-          <span key={`${title}-${item}`} className="contents">
-            {index > 0 && <span className="text-slate-300">→</span>}
-            <span className="rounded-lg bg-slate-50 px-2.5 py-1.5">{item}</span>
-          </span>
+    <div className={`mx-auto w-full rounded-2xl border px-5 py-4 ${strong ? "border-indigo-200 bg-indigo-50/70" : "border-slate-200 bg-white"}`}>
+      <p className={`font-semibold ${strong ? "text-indigo-950" : "text-slate-900"}`}>{label}</p>
+      {detail && <p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p>}
+    </div>
+  );
+}
+
+function FlowLine() {
+  return <div className="mx-auto h-7 w-px bg-slate-300" />;
+}
+
+function ArchitectureBranch({ eyebrow, title, steps }: { eyebrow: string; title: string; steps: readonly string[] }) {
+  return (
+    <div>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">{eyebrow}</p>
+      <h3 className="mt-2 text-xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h3>
+      <div className="mt-5 border-l border-slate-200 pl-5">
+        {steps.map((step, index) => (
+          <div key={step} className="relative pb-5 last:pb-0">
+            <span className="absolute -left-[23px] top-2 h-1.5 w-1.5 rounded-full bg-indigo-400" />
+            <p className="text-sm font-semibold text-slate-800">{step}</p>
+            {index < steps.length - 1 && <span className="mt-2 block text-xs text-slate-300">↓</span>}
+          </div>
         ))}
       </div>
     </div>

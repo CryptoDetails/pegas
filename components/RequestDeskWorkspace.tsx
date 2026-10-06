@@ -1,15 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { AgenticFinanceHero } from "./AgenticFinanceHero";
 import { AgenticFinanceTimeline } from "./AgenticFinanceTimeline";
 import { AgenticPaymentInspector } from "./AgenticPaymentInspector";
-import { AgenticStack } from "./AgenticStack";
 import { AppHeader } from "./AppHeader";
-import { DesignThesis } from "./DesignThesis";
-import { FrameworkToPrototype } from "./FrameworkToPrototype";
 import { HandoffInspector } from "./HandoffInspector";
-import { RealityBoundary } from "./RealityBoundary";
 import { WorkflowGraph, type GraphStates, type HandoffPulse, type NodeState } from "./WorkflowGraph";
 import { WorkflowResultCard } from "./WorkflowResultCard";
 import type { FinalRequestCard, Handoff, PaidDepartment, WorkflowEvent, WorkflowScenario } from "@/lib/workflow/types";
@@ -280,11 +277,10 @@ export function RequestDeskWorkspace() {
           </div>
         </div>
 
-        <div className="mt-10 space-y-8">
-          <DesignThesis />
-          <FrameworkToPrototype />
-          <AgenticStack />
-          <RealityBoundary />
+        <div className="mt-10 border-t border-slate-200 pt-7 text-center">
+          <Link href="/vision" className="focus-ring inline-flex rounded-lg text-sm font-semibold text-[var(--pegas-blue-dark)] hover:text-indigo-700">
+            Explore the thinking behind the demo →
+          </Link>
         </div>
       </main>
     </div>
