@@ -1,6 +1,6 @@
 import { isSolanaPublicKey } from "../lib/payments/solana-utils.ts";
 const NETWORK="solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
-const GENESIS="EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+const GENESIS="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const MINT="4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const env=(name:string)=>process.env[name]?.trim()??"";
 const config={enabled:env("AGENTIC_PAYMENTS_ENABLED")==="true",facilitator:env("X402_FACILITATOR_URL")||"https://x402.org/facilitator",network:env("SOLANA_NETWORK")||NETWORK,mint:env("SOLANA_USDC_MINT")||MINT,rpc:env("SOLANA_RPC_URL"),secret:env("PAYMENT_BUYER_PRIVATE_KEY"),buyer:env("PAYMENT_BUYER_ADDRESS"),seller:env("LEGAL_PAY_TO"),service:env("LEGAL_SERVICE_BASE_URL"),auth:env("LEGAL_SERVICE_AUTH_SECRET"),amount:env("LEGAL_CONSULTATION_AMOUNT_ATOMIC")||"10000",maxOp:env("PAYMENT_MAX_PER_OPERATION_ATOMIC")||"10000",redis:env("UPSTASH_REDIS_REST_URL"),redisToken:env("UPSTASH_REDIS_REST_TOKEN")};

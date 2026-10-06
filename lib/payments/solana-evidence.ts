@@ -18,7 +18,7 @@ type TokenBalance={mint?:string;accountIndex?:number;owner?:string;uiTokenAmount
 type ParsedTransaction={meta?:{err?:unknown;preTokenBalances?:TokenBalance[];postTokenBalances?:TokenBalance[]}};
 type SignatureStatusesResult={value?:Array<{confirmationStatus?:unknown}|null>};
 
-const DEVNET_GENESIS="EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+const DEVNET_GENESIS="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 async function rpc(config:PaymentConfig,method:string,params:unknown[],signal?:AbortSignal){const res=await fetch(config.rpcUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params}),signal,cache:"no-store"});if(!res.ok)throw new Error(`solana_rpc_http_${res.status}`);const data=await res.json() as {result?:unknown;error?:{message?:string}};if(data.error)throw new Error(`solana_rpc_${data.error.message??"error"}`);return data.result;}
 export async function verifyDevnetCluster(config:PaymentConfig,signal?:AbortSignal){const genesis=await rpc(config,"getGenesisHash",[],signal);return genesis===DEVNET_GENESIS;}
 export async function getBuyerUsdcBalanceAtomic(config:PaymentConfig,signal?:AbortSignal){
