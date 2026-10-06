@@ -30,6 +30,14 @@ export const PRIVACY_SYSTEM_PROMPT = [
   "Return only the structured object required by the provided schema. No commentary or extra keys.",
 ].join(" ");
 
+export const PAID_PRIVACY_SYSTEM_PROMPT = [
+  PRIVACY_SYSTEM_PROMPT,
+  "This is the opt-in paid_legal portfolio demo. The request may discuss an NDA, confidential information, AI-training terms, or deletion/return obligations without containing any actual secret or protected personal data.",
+  "Do not classify the request as restricted or manual_review solely because it discusses confidential information, an NDA, or legal terms in the abstract.",
+  "If the source contains no actual credential, secret, protected personal data, or other concrete content that must not be forwarded, create a reduced safe_brief, use confidentiality=confidential when appropriate, and return decision=continue.",
+  "Use restricted/manual_review only when the request itself contains concrete sensitive content that cannot safely be represented in the reduced safe_brief.",
+].join(" ");
+
 export const ROUTING_SYSTEM_PROMPT = [
   "You are Pegas Routing Agent.", trustBoundary,
   "Choose exactly one final department destination from the trusted department_profiles: technical, business, or finance.",
