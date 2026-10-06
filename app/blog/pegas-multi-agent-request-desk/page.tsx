@@ -19,6 +19,7 @@ export default function MultiAgentRequestDeskArticlePage() {
 
       <ArticleLinks>
         <ArticleLink href="/blog/pegas-serverless-gpu-modal-scale-to-zero" eyebrow="Previous" title="The Day Pegas Stopped Needing a GPU Babysitter" />
+        <ArticleLink href="/blog/pegas-agentic-finance-x402-solana" eyebrow="Next" title="From AI Workflow to Agentic Finance: How Pegas Learned to Pay for Expertise" />
         <ArticleLink href="/" eyebrow="Product" title="Try the live Request Desk" />
         <ArticleLink href="/build" eyebrow="Guide" title="Read how Pegas is built" />
         <ArticleLink href="/benchmark" eyebrow="Archive" title="View the legacy single-step benchmark" />

@@ -40,9 +40,15 @@ const articles = [
   },
   {
     href: "/blog/pegas-multi-agent-request-desk",
-    label: "Article 6 · Latest",
+    label: "Article 6",
     title: "From One Model Call to a Multi-Agent System: How Pegas Learned to Route Work",
     subtitle: "How Pegas became a visible Request Desk with specialized agents, conditional privacy review, bounded correction loops, and inspectable handoffs.",
+  },
+  {
+    href: "/blog/pegas-agentic-finance-x402-solana",
+    label: "Article 7 · Latest",
+    title: "From AI Workflow to Agentic Finance: How Pegas Learned to Pay for Expertise",
+    subtitle: "How bounded authority, x402 on Solana Devnet, Alchemy evidence, Upstash payment state, and ideas from Lead's agentic finance framework became one working Pegas flow.",
   },
 ];
 
