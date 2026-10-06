@@ -7,6 +7,7 @@ import { AgenticFinanceTimeline } from "./AgenticFinanceTimeline";
 import { AgenticPaymentInspector } from "./AgenticPaymentInspector";
 import { AppHeader } from "./AppHeader";
 import { HandoffInspector } from "./HandoffInspector";
+import { ModelRuntimeControl } from "./ModelRuntimeControl";
 import { WorkflowGraph, type GraphStates, type HandoffPulse, type NodeState } from "./WorkflowGraph";
 import { WorkflowResultCard } from "./WorkflowResultCard";
 import type { FinalRequestCard, Handoff, PaidDepartment, WorkflowEvent, WorkflowScenario } from "@/lib/workflow/types";
@@ -61,6 +62,10 @@ export function RequestDeskWorkspace() {
   const legalDeliveryIncomplete = errorCode === "legal_delivery_failed";
 
   const compactEvents = useMemo(() => events.filter((e) => e.type !== "heartbeat").slice(-24), [events]);
+  const runtimeEvents = useMemo(
+    () => events.filter((event) => event.type === "agent_started" || event.type === "agent_completed" || event.type === "agent_failed"),
+    [events],
+  );
   const liveLabel = useMemo(() => {
     if (!busy) return null;
     if (states.reviewer === "running") return "Reviewer is checking the proposal…";
@@ -230,6 +235,7 @@ export function RequestDeskWorkspace() {
                   <b>Agent-funded demo</b> · Solana Devnet · 0.01 test USDC per consultation<br />No wallet connection. No real funds.
                 </div>
               )}
+              <ModelRuntimeControl events={runtimeEvents} />
               <label htmlFor="request" className="mt-5 block text-sm font-semibold text-slate-900">Request</label>
               <textarea id="request" value={message} onChange={(e) => setMessage(e.target.value)} disabled={busy} maxLength={4000} rows={8} className="focus-ring mt-3 min-h-[210px] w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-800 outline-none disabled:opacity-60" />
               {!paidMode && (

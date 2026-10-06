@@ -245,6 +245,44 @@ def web():
             "worker_id": _worker_id(),
         }
 
+    @api.post("/warmup")
+    def warmup():
+        import httpx
+
+        request_body = {
+            "model": MODEL,
+            "prompt": "Reply with OK.",
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0, "num_predict": 2},
+        }
+
+        try:
+            response = httpx.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json=request_body,
+                timeout=120.0,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail="Ollama warmup timed out") from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HTTPException(status_code=502, detail="Ollama warmup failed") from exc
+
+        generated = payload.get("response")
+        if not isinstance(generated, str) or not generated.strip():
+            raise HTTPException(status_code=502, detail="Ollama warmup returned no inference output")
+
+        return {
+            "status": "ready",
+            "runtime": "ollama",
+            "model": MODEL,
+            "gpu": _gpu_name(),
+            "worker_id": _worker_id(),
+            "warm_window_seconds": 150,
+        }
+
     @api.post("/analyze")
     def analyze(request: AnalyzeRequest):
         try:
