@@ -18,6 +18,7 @@ export default function AgenticFinanceArticlePage() {
       <MarkdownArticleBody markdown={agenticFinanceArticleMarkdown} />
 
       <ArticleLinks>
+        <ArticleLink href="/blog/pegas-mcp-server-tool-not-authority" eyebrow="Next" title="Pegas Became an MCP Server: Other Agents Get a Tool, Not Authority" />
         <ArticleLink href="/blog/pegas-multi-agent-request-desk" eyebrow="Previous" title="From One Model Call to a Multi-Agent System: How Pegas Learned to Route Work" />
         <ArticleLink href="/" eyebrow="Product" title="Try the live Agentic Finance demo" />
         <ArticleLink href="/build" eyebrow="Guide" title="Read how Pegas is built" />

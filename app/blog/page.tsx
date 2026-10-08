@@ -46,9 +46,15 @@ const articles = [
   },
   {
     href: "/blog/pegas-agentic-finance-x402-solana",
-    label: "Article 7 · Latest",
+    label: "Article 7",
     title: "From AI Workflow to Agentic Finance: How Pegas Learned to Pay for Expertise",
     subtitle: "How bounded authority, x402 on Solana Devnet, Alchemy evidence, Upstash payment state, and ideas from Lead's agentic finance framework became one working Pegas flow.",
+  },
+  {
+    href: "/blog/pegas-mcp-server-tool-not-authority",
+    label: "Article 8 · Latest",
+    title: "Pegas Became an MCP Server: Other Agents Get a Tool, Not Authority",
+    subtitle: "How Pegas opened itself to external AI agents through the Model Context Protocol, and why the caller gets a tool but never payment authority.",
   },
 ];
 

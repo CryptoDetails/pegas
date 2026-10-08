@@ -61,6 +61,13 @@ export default function GuidePage() {
           >
             The paid specialist runs only after confirmed payment evidence. The result then returns to Review, while the payment evidence remains inspectable as a separate factual record.
           </GuideRow>
+          <GuideRow
+            number="07"
+            title="Let other agents call Pegas"
+            mono="External agent → MCP /api/mcp → same workflow and AUTH controls"
+          >
+            Pegas is also a remote MCP server. Claude, Cursor or any client that supports remote MCP can call three tools: submit_request (free), request_legal_consultation (0.01 test USDC) and get_payment_evidence (read-only). The caller gets a tool, not authority: it holds no keys and cannot change price, seller, network, asset or count. The mandate records the caller as an unverified external agent, and all external agents share one narrower budget lane.
+          </GuideRow>
         </section>
 
         <section className="mt-12 grid gap-8 border-y border-slate-200 py-8 lg:grid-cols-2">
@@ -74,6 +81,17 @@ export default function GuidePage() {
             <p className="mt-3 font-mono text-sm leading-7 text-slate-800">x402 → Solana Devnet → independent evidence</p>
             <p className="mt-3 text-sm leading-6 text-slate-600">The payment path remains inspectable without turning the model into the authority layer.</p>
           </div>
+        </section>
+
+        <section className="border-b border-slate-200 py-8">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Connect your own agent</p>
+          <p className="mt-3 break-all font-mono text-sm leading-7 text-slate-800">https://pegas-rouge.vercel.app/api/mcp</p>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+            In Claude: Customize → Connectors → Add custom connector, paste the URL, choose no sign-in. Then ask Claude to use the Pegas tools. You can also try it without any setup: on the Demo page, switch to &quot;AI agent via MCP&quot;.
+          </p>
+          <Link href="/" className="focus-ring mt-4 inline-flex rounded-lg text-sm font-semibold text-[var(--pegas-blue-dark)] hover:text-indigo-700">
+            Try the MCP agent mode on the Demo →
+          </Link>
         </section>
 
         <section className="mt-12">

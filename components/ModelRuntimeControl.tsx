@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { WorkflowEvent } from "@/lib/workflow/types";
 
 type RuntimeState = "idle" | "starting" | "ready" | "in_use" | "error";
@@ -22,65 +22,99 @@ function formatRemaining(milliseconds: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function ModelRuntimeControl({ events }: { events: WorkflowEvent[] }) {
-  const [state, setState] = useState<RuntimeState>("idle");
-  const [expiresAt, setExpiresAt] = useState<number | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const [warmWindowSeconds, setWarmWindowSeconds] = useState(DEFAULT_WARM_WINDOW_SECONDS);
-  const [expired, setExpired] = useState(false);
-  const processedEventIds = useRef(new Set<string>());
-  const activeAgents = useRef(0);
+type Runtime = {
+  state: RuntimeState;
+  expiresAt: number | null;
+  now: number;
+  expired: boolean;
+  activeAgents: number;
+};
 
-  useEffect(() => {
+type Tracked = {
+  events: WorkflowEvent[];
+  processedIds: ReadonlySet<string>;
+  running: boolean;
+};
+
+function isAgentFinish(event: WorkflowEvent) {
+  return event.type === "agent_completed" || event.type === "review_completed" || event.type === "agent_failed";
+}
+
+function readyWindow(runtime: Runtime, windowSeconds: number, current: number): Runtime {
+  return { ...runtime, state: "ready", now: current, expiresAt: current + windowSeconds * 1000, expired: false, activeAgents: 0 };
+}
+
+// Rendering must stay pure, so a transition made during render leaves expiresAt empty;
+// the countdown effect stamps the absolute expiry on its first tick.
+function readyPending(runtime: Runtime): Runtime {
+  return { ...runtime, state: "ready", expiresAt: null, expired: false, activeAgents: 0 };
+}
+
+export function ModelRuntimeControl({ events, running }: { events: WorkflowEvent[]; running: boolean }) {
+  const [runtime, setRuntime] = useState<Runtime>(() => ({
+    state: "idle",
+    expiresAt: null,
+    now: Date.now(),
+    expired: false,
+    activeAgents: 0,
+  }));
+  const [warmWindowSeconds, setWarmWindowSeconds] = useState(DEFAULT_WARM_WINDOW_SECONDS);
+  const [tracked, setTracked] = useState<Tracked>(() => ({ events: [], processedIds: new Set(), running }));
+
+  // Adjust state while rendering when the events or running props change.
+  if (tracked.events !== events || tracked.running !== running) {
+    let next = runtime;
+    const processedIds = new Set(tracked.processedIds);
+
     for (const event of events) {
-      if (processedEventIds.current.has(event.event_id)) continue;
-      processedEventIds.current.add(event.event_id);
+      if (processedIds.has(event.event_id)) continue;
+      processedIds.add(event.event_id);
 
       if (event.type === "agent_started") {
-        activeAgents.current += 1;
-        setState("in_use");
-        setExpiresAt(null);
-        setExpired(false);
+        next = { ...next, state: "in_use", expiresAt: null, expired: false, activeAgents: next.activeAgents + 1 };
         continue;
       }
 
-      if (event.type === "agent_completed" || event.type === "agent_failed") {
-        activeAgents.current = Math.max(0, activeAgents.current - 1);
-        if (activeAgents.current === 0) {
-          const current = Date.now();
-          setNow(current);
-          setExpiresAt(current + warmWindowSeconds * 1000);
-          setState("ready");
-          setExpired(false);
-        }
+      if (isAgentFinish(event)) {
+        const activeAgents = Math.max(0, next.activeAgents - 1);
+        next = activeAgents === 0 ? readyPending(next) : { ...next, activeAgents };
       }
     }
-  }, [events, warmWindowSeconds]);
+
+    // Safety net: a run that ends without a matching finish event must not leave the runtime "In use".
+    if (tracked.running && !running && next.state === "in_use") {
+      next = readyPending(next);
+    }
+
+    setTracked({ events, processedIds, running });
+    if (next !== runtime) setRuntime(next);
+  }
+
+  const { state, expiresAt, now, expired } = runtime;
 
   useEffect(() => {
-    if (state !== "ready" || expiresAt === null) return;
+    if (state !== "ready") return;
 
     const tick = () => {
       const current = Date.now();
-      setNow(current);
-      if (current >= expiresAt) {
-        setExpiresAt(null);
-        setState("idle");
-        setExpired(true);
-      }
+      setRuntime((previous) => {
+        if (previous.state !== "ready") return previous;
+        const deadline = previous.expiresAt ?? current + warmWindowSeconds * 1000;
+        return current >= deadline
+          ? { ...previous, state: "idle", now: current, expiresAt: null, expired: true }
+          : { ...previous, now: current, expiresAt: deadline };
+      });
     };
 
     tick();
     const interval = window.setInterval(tick, 1000);
     return () => window.clearInterval(interval);
-  }, [state, expiresAt]);
+  }, [state, expiresAt, warmWindowSeconds]);
 
   async function warmModel() {
     if (state === "starting") return;
 
-    setState("starting");
-    setExpiresAt(null);
-    setExpired(false);
+    setRuntime((previous) => ({ ...previous, state: "starting", expiresAt: null, expired: false }));
 
     try {
       const response = await fetch("/api/model/warmup", {
@@ -100,21 +134,12 @@ export function ModelRuntimeControl({ events }: { events: WorkflowEvent[] }) {
           : DEFAULT_WARM_WINDOW_SECONDS;
 
       setWarmWindowSeconds(configuredWindow);
-      if (activeAgents.current > 0) {
-        setState("in_use");
-        return;
-      }
-
       const current = Date.now();
-      setNow(current);
-      setExpiresAt(current + configuredWindow * 1000);
-      setState("ready");
+      setRuntime((previous) =>
+        previous.activeAgents > 0 ? { ...previous, state: "in_use" } : readyWindow(previous, configuredWindow, current),
+      );
     } catch {
-      if (activeAgents.current > 0) {
-        setState("in_use");
-      } else {
-        setState("error");
-      }
+      setRuntime((previous) => ({ ...previous, state: previous.activeAgents > 0 ? "in_use" : "error" }));
     }
   }
 

@@ -1,0 +1,309 @@
+diff --git a/app/blog/page.tsx b/app/blog/page.tsx
+index 8bded44..6ad1cc9 100644
+--- a/app/blog/page.tsx
++++ b/app/blog/page.tsx
+@@ -46,10 +46,16 @@ const articles = [
+   },
+   {
+     href: "/blog/pegas-agentic-finance-x402-solana",
+-    label: "Article 7 · Latest",
++    label: "Article 7",
+     title: "From AI Workflow to Agentic Finance: How Pegas Learned to Pay for Expertise",
+     subtitle: "How bounded authority, x402 on Solana Devnet, Alchemy evidence, Upstash payment state, and ideas from Lead's agentic finance framework became one working Pegas flow.",
+   },
++  {
++    href: "/blog/pegas-mcp-server-tool-not-authority",
++    label: "Article 8 · Latest",
++    title: "Pegas Became an MCP Server: Other Agents Get a Tool, Not Authority",
++    subtitle: "How Pegas opened itself to external AI agents through the Model Context Protocol, and why the caller gets a tool but never payment authority.",
++  },
+ ];
+ 
+ export default function BlogPage() {
+diff --git a/app/blog/pegas-agentic-finance-x402-solana/page.tsx b/app/blog/pegas-agentic-finance-x402-solana/page.tsx
+index 188d0a0..be8ec5e 100644
+--- a/app/blog/pegas-agentic-finance-x402-solana/page.tsx
++++ b/app/blog/pegas-agentic-finance-x402-solana/page.tsx
+@@ -18,6 +18,7 @@ export default function AgenticFinanceArticlePage() {
+       <MarkdownArticleBody markdown={agenticFinanceArticleMarkdown} />
+ 
+       <ArticleLinks>
++        <ArticleLink href="/blog/pegas-mcp-server-tool-not-authority" eyebrow="Next" title="Pegas Became an MCP Server: Other Agents Get a Tool, Not Authority" />
+         <ArticleLink href="/blog/pegas-multi-agent-request-desk" eyebrow="Previous" title="From One Model Call to a Multi-Agent System: How Pegas Learned to Route Work" />
+         <ArticleLink href="/" eyebrow="Product" title="Try the live Agentic Finance demo" />
+         <ArticleLink href="/build" eyebrow="Guide" title="Read how Pegas is built" />
+diff --git a/app/blog/pegas-mcp-server-tool-not-authority/page.tsx b/app/blog/pegas-mcp-server-tool-not-authority/page.tsx
+new file mode 100644
+index 0000000..5b4f9d3
+--- /dev/null
++++ b/app/blog/pegas-mcp-server-tool-not-authority/page.tsx
+@@ -0,0 +1,28 @@
++import type { Metadata } from "next";
++import { ArticleLink, ArticleLinks, BlogArticle } from "@/components/BlogArticle";
++import { MarkdownArticleBody } from "@/components/MarkdownArticleBody";
++import { mcpServerArticleMarkdown } from "@/lib/blogContent";
++
++export const metadata: Metadata = {
++  title: "Pegas Became an MCP Server: Other Agents Get a Tool, Not Authority | Pegas",
++  description:
++    "We opened Pegas to external AI agents through the Model Context Protocol. Claude, Cursor or any MCP client can now ask Pegas to route a request or buy a Legal consultation. The interesting part is not the connection. It is what the caller cannot do.",
++};
++
++export default function McpServerArticlePage() {
++  return (
++    <BlogArticle
++      title="Pegas Became an MCP Server: Other Agents Get a Tool, Not Authority"
++      subtitle="How Pegas opened itself to external AI agents through the Model Context Protocol, and why the caller gets a tool but never payment authority."
++    >
++      <MarkdownArticleBody markdown={mcpServerArticleMarkdown} />
++
++      <ArticleLinks>
++        <ArticleLink href="/blog/pegas-agentic-finance-x402-solana" eyebrow="Previous" title="From AI Workflow to Agentic Finance: How Pegas Learned to Pay for Expertise" />
++        <ArticleLink href="/" eyebrow="Product" title="Try the MCP agent mode on the Demo" />
++        <ArticleLink href="/build" eyebrow="Guide" title="Read how Pegas is built" />
++        <ArticleLink href="/blog" eyebrow="Blog" title="Browse all Pegas field notes" />
++      </ArticleLinks>
++    </BlogArticle>
++  );
++}
+diff --git a/app/build/page.tsx b/app/build/page.tsx
+index cd8381c..df3e14e 100644
+--- a/app/build/page.tsx
++++ b/app/build/page.tsx
+@@ -61,6 +61,13 @@ export default function GuidePage() {
+           >
+             The paid specialist runs only after confirmed payment evidence. The result then returns to Review, while the payment evidence remains inspectable as a separate factual record.
+           </GuideRow>
++          <GuideRow
++            number="07"
++            title="Let other agents call Pegas"
++            mono="External agent → MCP /api/mcp → same workflow and AUTH controls"
++          >
++            Pegas is also a remote MCP server. Claude, Cursor or any client that supports remote MCP can call three tools: submit_request (free), request_legal_consultation (0.01 test USDC) and get_payment_evidence (read-only). The caller gets a tool, not authority: it holds no keys and cannot change price, seller, network, asset or count. The mandate records the caller as an unverified external agent, and all external agents share one narrower budget lane.
++          </GuideRow>
+         </section>
+ 
+         <section className="mt-12 grid gap-8 border-y border-slate-200 py-8 lg:grid-cols-2">
+@@ -76,6 +83,17 @@ export default function GuidePage() {
+           </div>
+         </section>
+ 
++        <section className="border-b border-slate-200 py-8">
++          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Connect your own agent</p>
++          <p className="mt-3 break-all font-mono text-sm leading-7 text-slate-800">https://pegas-rouge.vercel.app/api/mcp</p>
++          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
++            In Claude: Customize → Connectors → Add custom connector, paste the URL, choose no sign-in. Then ask Claude to use the Pegas tools. You can also try it without any setup: on the Demo page, switch to &quot;AI agent via MCP&quot;.
++          </p>
++          <Link href="/" className="focus-ring mt-4 inline-flex rounded-lg text-sm font-semibold text-[var(--pegas-blue-dark)] hover:text-indigo-700">
++            Try the MCP agent mode on the Demo →
++          </Link>
++        </section>
++
+         <section className="mt-12">
+           <h2 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950">Evaluation</h2>
+           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+diff --git a/components/ModelRuntimeControl.tsx b/components/ModelRuntimeControl.tsx
+index c6d3688..07f252a 100644
+--- a/components/ModelRuntimeControl.tsx
++++ b/components/ModelRuntimeControl.tsx
+@@ -1,6 +1,6 @@
+ "use client";
+ 
+-import { useEffect, useRef, useState } from "react";
++import { useEffect, useState } from "react";
+ import type { WorkflowEvent } from "@/lib/workflow/types";
+ 
+ type RuntimeState = "idle" | "starting" | "ready" | "in_use" | "error";
+@@ -22,65 +22,99 @@ function formatRemaining(milliseconds: number) {
+   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+ }
+ 
+-export function ModelRuntimeControl({ events }: { events: WorkflowEvent[] }) {
+-  const [state, setState] = useState<RuntimeState>("idle");
+-  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+-  const [now, setNow] = useState(() => Date.now());
++type Runtime = {
++  state: RuntimeState;
++  expiresAt: number | null;
++  now: number;
++  expired: boolean;
++  activeAgents: number;
++};
++
++type Tracked = {
++  events: WorkflowEvent[];
++  processedIds: ReadonlySet<string>;
++  running: boolean;
++};
++
++function isAgentFinish(event: WorkflowEvent) {
++  return event.type === "agent_completed" || event.type === "review_completed" || event.type === "agent_failed";
++}
++
++function readyWindow(runtime: Runtime, windowSeconds: number, current: number): Runtime {
++  return { ...runtime, state: "ready", now: current, expiresAt: current + windowSeconds * 1000, expired: false, activeAgents: 0 };
++}
++
++// Rendering must stay pure, so a transition made during render leaves expiresAt empty;
++// the countdown effect stamps the absolute expiry on its first tick.
++function readyPending(runtime: Runtime): Runtime {
++  return { ...runtime, state: "ready", expiresAt: null, expired: false, activeAgents: 0 };
++}
++
++export function ModelRuntimeControl({ events, running }: { events: WorkflowEvent[]; running: boolean }) {
++  const [runtime, setRuntime] = useState<Runtime>(() => ({
++    state: "idle",
++    expiresAt: null,
++    now: Date.now(),
++    expired: false,
++    activeAgents: 0,
++  }));
+   const [warmWindowSeconds, setWarmWindowSeconds] = useState(DEFAULT_WARM_WINDOW_SECONDS);
+-  const [expired, setExpired] = useState(false);
+-  const processedEventIds = useRef(new Set<string>());
+-  const activeAgents = useRef(0);
++  const [tracked, setTracked] = useState<Tracked>(() => ({ events: [], processedIds: new Set(), running }));
++
++  // Adjust state while rendering when the events or running props change.
++  if (tracked.events !== events || tracked.running !== running) {
++    let next = runtime;
++    const processedIds = new Set(tracked.processedIds);
+ 
+-  useEffect(() => {
+     for (const event of events) {
+-      if (processedEventIds.current.has(event.event_id)) continue;
+-      processedEventIds.current.add(event.event_id);
++      if (processedIds.has(event.event_id)) continue;
++      processedIds.add(event.event_id);
+ 
+       if (event.type === "agent_started") {
+-        activeAgents.current += 1;
+-        setState("in_use");
+-        setExpiresAt(null);
+-        setExpired(false);
++        next = { ...next, state: "in_use", expiresAt: null, expired: false, activeAgents: next.activeAgents + 1 };
+         continue;
+       }
+ 
+-      if (event.type === "agent_completed" || event.type === "agent_failed") {
+-        activeAgents.current = Math.max(0, activeAgents.current - 1);
+-        if (activeAgents.current === 0) {
+-          const current = Date.now();
+-          setNow(current);
+-          setExpiresAt(current + warmWindowSeconds * 1000);
+-          setState("ready");
+-          setExpired(false);
+-        }
++      if (isAgentFinish(event)) {
++        const activeAgents = Math.max(0, next.activeAgents - 1);
++        next = activeAgents === 0 ? readyPending(next) : { ...next, activeAgents };
+       }
+     }
+-  }, [events, warmWindowSeconds]);
++
++    // Safety net: a run that ends without a matching finish event must not leave the runtime "In use".
++    if (tracked.running && !running && next.state === "in_use") {
++      next = readyPending(next);
++    }
++
++    setTracked({ events, processedIds, running });
++    if (next !== runtime) setRuntime(next);
++  }
++
++  const { state, expiresAt, now, expired } = runtime;
+ 
+   useEffect(() => {
+-    if (state !== "ready" || expiresAt === null) return;
++    if (state !== "ready") return;
+ 
+     const tick = () => {
+       const current = Date.now();
+-      setNow(current);
+-      if (current >= expiresAt) {
+-        setExpiresAt(null);
+-        setState("idle");
+-        setExpired(true);
+-      }
++      setRuntime((previous) => {
++        if (previous.state !== "ready") return previous;
++        const deadline = previous.expiresAt ?? current + warmWindowSeconds * 1000;
++        return current >= deadline
++          ? { ...previous, state: "idle", now: current, expiresAt: null, expired: true }
++          : { ...previous, now: current, expiresAt: deadline };
++      });
+     };
+ 
+     tick();
+     const interval = window.setInterval(tick, 1000);
+     return () => window.clearInterval(interval);
+-  }, [state, expiresAt]);
++  }, [state, expiresAt, warmWindowSeconds]);
+ 
+   async function warmModel() {
+     if (state === "starting") return;
+ 
+-    setState("starting");
+-    setExpiresAt(null);
+-    setExpired(false);
++    setRuntime((previous) => ({ ...previous, state: "starting", expiresAt: null, expired: false }));
+ 
+     try {
+       const response = await fetch("/api/model/warmup", {
+@@ -100,21 +134,12 @@ export function ModelRuntimeControl({ events }: { events: WorkflowEvent[] }) {
+           : DEFAULT_WARM_WINDOW_SECONDS;
+ 
+       setWarmWindowSeconds(configuredWindow);
+-      if (activeAgents.current > 0) {
+-        setState("in_use");
+-        return;
+-      }
+-
+       const current = Date.now();
+-      setNow(current);
+-      setExpiresAt(current + configuredWindow * 1000);
+-      setState("ready");
++      setRuntime((previous) =>
++        previous.activeAgents > 0 ? { ...previous, state: "in_use" } : readyWindow(previous, configuredWindow, current),
++      );
+     } catch {
+-      if (activeAgents.current > 0) {
+-        setState("in_use");
+-      } else {
+-        setState("error");
+-      }
++      setRuntime((previous) => ({ ...previous, state: previous.activeAgents > 0 ? "in_use" : "error" }));
+     }
+   }
+ 
+diff --git a/components/RequestDeskWorkspace.tsx b/components/RequestDeskWorkspace.tsx
+index 6f46e20..be5687b 100644
+--- a/components/RequestDeskWorkspace.tsx
++++ b/components/RequestDeskWorkspace.tsx
+@@ -76,7 +76,7 @@ export function RequestDeskWorkspace() {
+ 
+   const compactEvents = useMemo(() => events.filter((e) => e.type !== "heartbeat").slice(-24), [events]);
+   const runtimeEvents = useMemo(
+-    () => events.filter((event) => event.type === "agent_started" || event.type === "agent_completed" || event.type === "agent_failed"),
++    () => events.filter((event) => event.type === "agent_started" || event.type === "agent_completed" || event.type === "review_completed" || event.type === "agent_failed"),
+     [events],
+   );
+   const liveLabel = useMemo(() => {
+@@ -354,7 +354,7 @@ export function RequestDeskWorkspace() {
+                   <b>Agent-funded demo</b> · Solana Devnet · 0.01 test USDC per consultation<br />No wallet connection. No real funds.
+                 </div>
+               )}
+-              <ModelRuntimeControl events={runtimeEvents} />
++              <ModelRuntimeControl events={runtimeEvents} running={busy} />
+               <label htmlFor="request" className="mt-5 block text-sm font-semibold text-slate-900">Request</label>
+               <textarea id="request" value={message} onChange={(e) => setMessage(e.target.value)} disabled={busy} maxLength={4000} rows={8} className="focus-ring mt-3 min-h-[210px] w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-800 outline-none disabled:opacity-60" />
+               {!paidMode && (
+diff --git a/lib/blogContent.ts b/lib/blogContent.ts
+index 5d3b0e0..874ff80 100644
+--- a/lib/blogContent.ts
++++ b/lib/blogContent.ts
+@@ -3,3 +3,5 @@ export const serverlessGpuArticleMarkdown = "---\ntitle: \"The Day Pegas Stopped
+ export const multiAgentRequestDeskArticleMarkdown = "# From One Model Call to a Multi-Agent System: How Pegas Learned to Route Work\n\n**How we turned a self-hosted Qwen3 4B deployment into a visible Request Desk with specialized agents, conditional privacy review, bounded correction loops, and inspectable handoffs.**\n\nA few days ago, Pegas was mainly a proof that we could run an open-weight model on our own cloud GPU, expose it through an API, and measure whether it returned useful structured output.\n\nToday, the project is something very different.\n\nPegas now behaves like a small internal Request Desk for a fictional company. A user sends one request. The system interprets it, decides whether it is safe to continue, routes it to the right specialist, asks another agent to review the proposed result, and can return the task for one correction if necessary.\n\nMore importantly, the frontend shows what is actually happening.\n\nThe graph is not a staged animation. The handoffs are not decorative. The context shown in the UI is the context the next agent really received.\n\nThat shift, from “a model that answers” to “a system that coordinates work,” was the main milestone of this session.\n\n## The architecture stayed simple on purpose\n\nWe did not add a second model, a separate GPU for every role, or a heavy orchestration framework.\n\nAll AI roles still run on the same self-hosted **Qwen3 4B** model through the existing stack:\n\n```text\nBrowser\n  -> Next.js / Vercel\n  -> Request Desk workflow API\n  -> Modal\n  -> Ollama\n  -> Qwen3 4B on NVIDIA L4\n```\n\nThe important change is above the model layer.\n\nDifferent agents now have different instructions, different contracts, different allowed outputs, and different responsibilities. The orchestration itself is deterministic TypeScript backend logic. It decides which role can run next, validates outputs, applies safety rules, creates handoffs, and stops loops.\n\nThat distinction matters.\n\nThe “orchestrator” is not another AI pretending to be a manager. It is code.\n\nThe agents do the semantic work. The backend controls the workflow.\n\n## The agents\n\n### Intake Agent: understand before routing\n\nEvery normal request starts with Intake.\n\nIts job is not to solve the request. It extracts the structure needed for the rest of the workflow:\n\n- what the request is about;\n- which department is the likely candidate;\n- priority;\n- confidentiality;\n- whether privacy review may be needed;\n- what information is missing;\n- why the proposed route makes sense.\n\nThis turned out to be one of the most important design decisions.\n\nIf the first agent tries to both understand the request and complete the final task, there is very little left for the rest of the system to coordinate. Instead, Intake produces a constrained intermediate state.\n\nThat state changes what happens next.\n\nIf the request is clear and ordinary, the workflow continues to a department agent.\n\nIf it is too vague, the workflow can stop with **Needs information** and ask one concrete clarification question.\n\nIf it contains obvious credential-like material, deterministic preflight rules stop the request before the model is called at all.\n\nAnd if it contains non-secret but sensitive information, it can be sent through Privacy first.\n\n### Privacy Agent: reduce context, not just label it\n\nPrivacy is conditional. It does not run on every request.\n\nThat was intentional.\n\nA normal billing request should not visit a privacy agent just because the graph has a Privacy node. Running every node “for completeness” would turn the workflow into theatre.\n\nPrivacy is activated only when Intake or deterministic policy detects that the request needs additional protection.\n\nIts role is also more than classification.\n\nPrivacy can return:\n\n- continue;\n- manual review;\n- needs information.\n\nBut the most important part is that Privacy can **change the context that continues through the system**.\n\nFor a normal request, the selected department can receive the usual sanitized request context.\n\nFor a privacy-sensitive request, the next agent can receive a reduced brief instead: the task, routing information, confidentiality level, allowed evidence, and recipient restrictions, without automatically receiving the complete sanitized source text.\n\nIn other words, Privacy is not just saying “this is confidential.”\n\nIt can actually enforce a smaller information surface.\n\nAnd once context has been removed, later correction or rerouting is not allowed to silently restore the larger pre-Privacy payload.\n\n### Department Agents: different specialists, not one generic prompt\n\nThe current Request Desk has three specialist department agents:\n\n- **Technical**\n- **Business**\n- **Finance**\n\nOnly one is selected on the first pass.\n\nEach is a separate model call with its own role instructions. That is important because “multi-agent” can otherwise become a cosmetic label for one generic prompt reused several times.\n\nThe Technical agent is expected to handle integration and API problems.\n\nThe Business agent handles partnership and commercial coordination scenarios.\n\nThe Finance agent handles invoices, duplicate charges, billing questions, and similar requests.\n\nThe selected agent receives a projected context from Intake or Privacy and returns a department proposal: a summary, priority, department note, recommended next action, questions, and supporting evidence.\n\nThe other department agents are explicitly skipped.\n\nThe UI reflects that actual route rather than lighting up every possible agent.\n\n### Reviewer Agent: the system is allowed to disagree with itself\n\nThe Reviewer is the step that made the workflow feel much more like a system and much less like a chain of prompts.\n\nIt receives the sanitized request plus the validated Intake result and the selected department proposal. It checks whether the proposed routing and response still match the source request and workflow rules.\n\nThe Reviewer can approve the result, request more information, require manual review, or ask for a revision.\n\nPhase 2 added a bounded correction loop.\n\nIf Reviewer #1 requests a correction in the same department, that department can run once more and the revised proposal goes to Reviewer #2.\n\nIf Reviewer #1 decides the request belongs to another allowed department, the workflow can reroute once to that department and then run Reviewer #2.\n\nReviewer #2 is terminal.\n\nThere is no third correction, no endless agent conversation, and no “keep trying until something looks good.”\n\nThat bounded loop was a deliberate safety and cost decision.\n\n## Routing is a real backend decision\n\nThe current high-level paths now look like this:\n\n```text\nPreflight\n  -> Intake\n      -> Department\n          -> Reviewer\n              -> Final result\n```\n\nFor a privacy-sensitive request:\n\n```text\nPreflight\n  -> Intake\n      -> Privacy\n          -> Department\n              -> Reviewer\n                  -> Final result\n```\n\nFor an underspecified request:\n\n```text\nPreflight\n  -> Intake\n      -> Needs information\n          -> END\n```\n\nFor obvious credentials or restricted input:\n\n```text\nPreflight\n  -> Manual review\n      -> END\n```\n\nAnd when review requests one correction:\n\n```text\nDepartment\n  -> Reviewer #1\n      -> Department revision / reroute\n          -> Reviewer #2\n              -> END\n```\n\nThe model proposes semantic decisions, but deterministic code still controls the legal transitions.\n\nThat means a model cannot create an infinite loop, invent a new department, or downgrade a hard restricted-policy floor and continue automatically.\n\n## Handoffs became first-class objects\n\nOne of the strongest changes today was turning agent-to-agent context into something inspectable.\n\nEvery real transition can create a handoff containing:\n\n- source agent;\n- target agent;\n- reason;\n- forwarded context;\n- fields that were withheld.\n\nThe key rule is simple:\n\n**the context shown in the Handoff Inspector is the context that was actually serialized into the next model call.**\n\nWe did not want a polished summary in the UI while secretly sending a larger object behind the scenes.\n\nThat would make the orchestration impossible to audit.\n\nOn the frontend, a user can now inspect transitions such as:\n\n```text\nIntake -> Business\nBusiness -> Reviewer\n```\n\nor:\n\n```text\nIntake -> Privacy\n```\n\nand see both **what was passed** and **what was withheld**.\n\nThis is especially useful for the Privacy path because the effect of the privacy decision becomes visible. The user can see that the next agent did not simply receive the entire previous state.\n\n## The frontend now reflects the workflow instead of explaining it\n\nThe homepage changed significantly with the architecture.\n\nThe central message is now:\n\n> **One request. The right team.**\n\nThe main graph shows the current role states:\n\n- running;\n- completed;\n- skipped;\n- not needed;\n- failed.\n\nThose states are driven by real backend events over the workflow stream. There are no timers pretending that an agent has completed before the backend says so.\n\nA normal Finance request visibly becomes:\n\n```text\nIntake -> Finance -> Reviewer\n```\n\nwhile Technical and Business remain skipped.\n\nA sensitive request can visibly activate Privacy.\n\nA result card then shows the actual final department, priority, review outcome, summary, department note, next action, and route explanation.\n\nThe detailed event trace still exists, but it is no longer the main product. It is collapsed behind **View activity**.\n\nThat was another important product lesson: observability is useful, but raw event logs should not dominate the interface. The graph and handoffs should explain the workflow first; the timeline is there when someone wants to inspect deeper.\n\n## Why we stopped treating Benchmark as the product\n\nThe old Pegas interface gave Benchmark a prominent place because the original project was a single-step triage experiment.\n\nThat benchmark still matters as historical evidence, but it measures a different system.\n\nThe current Request Desk is not just a classifier. It contains conditional execution, multiple roles, context projection, review, privacy rules, corrections, and handoffs.\n\nSo Benchmark was removed from the primary navigation.\n\nThe public navigation now focuses on:\n\n```text\nDemo\nGuide\nBlog\n```\n\nThe legacy benchmark remains available as a historical single-step experiment and regression reference. We did not delete inconvenient old numbers or relabel them as evidence for the new architecture.\n\nThat separation makes the project story much clearer.\n\n## Small models force you to engineer the contract\n\nOne of the most useful lessons from this session came from failures.\n\nThe first multi-agent implementation looked correct architecturally, but Qwen3 4B would occasionally produce structured output that was semantically fine and mechanically invalid.\n\nWe saw failures such as:\n\n- optional fields using `null` instead of an empty string;\n- harmless extra keys;\n- evidence being phrased slightly differently;\n- Reviewer output failing a strict schema on one run but not the next;\n- explanatory fields exceeding a fixed character limit.\n\nFor example, Intake could produce a perfectly understandable routing explanation that happened to exceed the allowed `route_reason` length. Initially, that caused the entire workflow to fail.\n\nThe fix was not to make every field loose.\n\nWe split the contract into two categories.\n\n**Control fields stay strict:**\n\n- department;\n- decision;\n- priority;\n- confidentiality;\n- privacy state;\n- correction target.\n\nIf these are invalid, the workflow should not guess.\n\n**Descriptive fields are hardened:**\n\n- safe `null` / empty normalization;\n- missing optional arrays receive safe defaults;\n- irrelevant extra wrapper objects can be handled;\n- invalid evidence can be dropped instead of crashing the run;\n- long narrative fields can be safely bounded;\n- one structured-output repair attempt is allowed.\n\nThis made the system much more reliable without weakening the decisions that control routing.\n\nThe lesson is simple: asking a model for JSON is not the same as having a reliable structured interface.\n\nThe backend still has to own the contract.\n\n## One model, multiple agents\n\nAnother important point is what “multi-agent” means here.\n\nPegas does not run a separate foundation model for Intake, Privacy, Finance, Business, Technical, and Review.\n\nThey all use the same Qwen3 4B deployment.\n\nThe specialization comes from:\n\n- separate role prompts;\n- separate structured schemas;\n- different projected inputs;\n- different allowed outputs;\n- deterministic routing between them.\n\nThis keeps the infrastructure small enough for a portfolio project while still making the orchestration real.\n\nIt also makes the experiment more interesting: how far can one relatively small self-hosted model go when the application around it is carefully structured?\n\n## Safety is partly AI and partly code\n\nThe workflow deliberately does not delegate every safety decision to the model.\n\nCredential-like input is stopped by deterministic preflight logic before any model call.\n\nA hard `restricted` classification cannot be downgraded by Privacy and automatically forwarded.\n\nA second requested correction does not start a third loop.\n\nIf the system cannot route safely, it stops at **Manual review required** or **Needs information**.\n\nThis hybrid approach was more useful than trying to make one prompt contain every safety rule.\n\nThe model handles ambiguity and semantics.\n\nCode enforces non-negotiable workflow boundaries.\n\n## What changed in Pegas today\n\nThe largest change is not visual, even though the product looks very different.\n\nPreviously, Pegas mainly demonstrated:\n\n> We can self-host an open-weight model and call it from a web application.\n\nNow it demonstrates:\n\n> We can turn that model into a coordinated set of specialized roles, route work based on model output, constrain those transitions with deterministic rules, pass only selected context between roles, review and correct the result, and make the whole process visible.\n\nThat is a much stronger system story.\n\nThe self-hosted model is still the foundation.\n\nBut the interesting part is no longer the single inference request.\n\nIt is what happens between requests.\n\n## What comes next\n\nThere is still room to evolve the architecture.\n\nThe current department agents are an incremental implementation, and the Request Desk can later move closer to the final V3 topology where routing itself becomes a more explicit stable role rather than representing departments as separate agents.\n\nThe workflow can also be evaluated as a workflow, not just as the old classifier: route correctness, context preservation, privacy enforcement, correction behavior, call budget, duration, and failure modes.\n\nBut today’s milestone is already substantial.\n\nPegas now has:\n\n- a self-hosted open-weight model;\n- specialized AI roles;\n- real conditional routing;\n- an optional privacy path;\n- bounded reviewer feedback;\n- deterministic safety rules;\n- inspectable context handoffs;\n- backend-driven visualization.\n\nThe project did not become more interesting because we added more prompts.\n\nIt became more interesting because the outputs of those prompts now change what the system does next.\n";
+ 
+ export const agenticFinanceArticleMarkdown = "---\ntitle: \"From AI Workflow to Agentic Finance: How Pegas Learned to Pay for Expertise\"\ndescription: \"How Pegas extended a multi-agent workflow with bounded authority, x402 payments on Solana Devnet, independent chain evidence, and a governance model inspired by Lead's agentic finance framework.\"\nexcerpt: \"Making an AI agent send a payment is the easy part. The harder question is deciding when it is allowed to pay, whom it may pay, how much authority it has, and how to prove what actually happened.\"\nslug: \"pegas-agentic-finance-x402-solana\"\n---\n\n# From AI Workflow to Agentic Finance: How Pegas Learned to Pay for Expertise\n\nPegas started with a simple product idea:\n\n**One request. The right team.**\n\nA user sends one request. Specialized AI roles understand it, reduce sensitive context where needed, decide where it should go, and independently review the result.\n\nThat already made Pegas a visible multi-agent workflow rather than a single model call hidden behind a form.\n\nBut once that worked, a more interesting question appeared:\n\n> **What happens when the right next step is not another internal model call, but buying expertise from another service?**\n\nThat question pushed Pegas into **agentic finance**.\n\nNot by giving an LLM a wallet and hoping for the best.\n\nBy asking a much harder question:\n\n> **How do you give an AI agent financial authority that is narrow, inspectable, revocable, and provable?**\n\nThat became the design problem behind Pegas Agentic Payments.\n\n## The trigger: an agent that needs outside expertise\n\nWe deliberately chose a very small use case.\n\nImagine Pegas receives a request involving a vendor NDA. The Routing Agent can recognize that the request requires specialist Legal input.\n\nInstead of pretending every capability exists inside one model, Pegas can request a separate paid Legal consultation.\n\nThe consultation costs:\n\n**0.01 test USDC on Solana Devnet.**\n\nThe amount is intentionally tiny. The money itself is not the interesting part.\n\nThe interesting part is everything that must happen **before and after** the payment.\n\nPegas needs to know:\n\n- which agent is acting;\n- on whose behalf it acts;\n- which service it may purchase;\n- which counterparty it may pay;\n- which asset and network are permitted;\n- the maximum amount;\n- whether the authority is still active;\n- whether that authority has already been used;\n- whether the quoted payment still matches the approved terms;\n- whether the payment actually settled on-chain;\n- and whether the specialist response was delivered only after that settlement was proven.\n\nThat is a much more interesting system than:\n\n```text\nLLM -> wallet -> send()\n```\n\n## Why we looked at Lead\n\nWhile designing the payment authority model, we found a useful framing in Lead's September 2026 paper:\n\n**Leading into the AI Revolution: A proposed federal framework for agentic finance.**\n\nThe paper makes an important distinction. The core issue is not whether an AI agent can call an API or move money. The issue is whether a system can clearly identify who is acting, under whose authority, within which limits, with what monitoring, and with a clean audit trail afterward.\n\nThat was very close to the problem we were trying to solve in Pegas.\n\nSo we used several ideas from the paper as **design inspiration**, then translated them into a small technical prototype.\n\nPegas is an independent project. It is not affiliated with Lead, endorsed by Lead, or an implementation of Lead's complete regulatory framework.\n\nWhat we wanted to explore was simpler:\n\n> **What could some of these governance ideas look like in an actual working multi-agent product?**\n\n## From framework to prototype\n\nSeveral concepts mapped naturally to technical primitives.\n\n### 1. Agent identity\n\nLead discusses a world in which an autonomous agent should not simply appear as anonymous software. Its identity should be connected to a principal and to the authority it has been given.\n\nPegas implements a deliberately lightweight version of this idea through a **KYA-lite Agent Registry**.\n\nFor the paid demo we can identify:\n\n- the Pegas Routing Agent as the buyer;\n- the Legal Advisor as the seller;\n- the public wallet associated with each side;\n- the service the counterparty is allowed to provide.\n\nThis is not formal KYA or bank-grade identity.\n\nIt is a prototype showing what explicit agent identity can look like inside a transaction flow.\n\n### 2. Delegated authority\n\nThe second idea was more important.\n\nAn AI agent should not receive vague permission to \"spend money.\"\n\nPegas creates an **Agent Mandate** for the specific operation.\n\nThe mandate records things such as:\n\n- principal;\n- acting agent;\n- counterparty;\n- service;\n- purpose;\n- network;\n- asset;\n- maximum amount;\n- expiration;\n- maximum number of authorizations.\n\nFor our Legal consultation, that authority is intentionally narrow.\n\nThe agent is not allowed to discover arbitrary services and start buying things.\n\nIt is authorized for one specific demo action:\n\n**one service, one registered counterparty, one fixed asset, one fixed amount, one authorization.**\n\n### 3. Authority is an intersection, not a union\n\nThis became one of the most important design decisions.\n\nA seller response cannot increase the buyer's authority.\n\nAn LLM cannot widen it.\n\nA downstream agent cannot reinterpret it.\n\nThe effective payment authority in Pegas is the **intersection** of several constraints:\n\n```text\nglobal policy\n∩\noperation mandate\n∩\nregistered identity\n∩\nseller quote\n∩\nbudget and rate controls\n```\n\nIf any of those disagree, the payment does not happen.\n\nThat idea is closely aligned with one of the more interesting observations in Lead's paper: in agent-to-agent transaction chains, authority should not expand as it passes between agents.\n\nFor us, this became code rather than a prompt.\n\n## The LLM does not control the wallet\n\nThis is the most important architectural boundary in Pegas.\n\nThere is no \"Payment Agent\" LLM.\n\nThe model can reason about the request. It can determine that specialist Legal review is useful.\n\nBut it cannot decide:\n\n> \"I think spending more money is reasonable.\"\n\nIt cannot change:\n\n- the recipient;\n- the amount;\n- the network;\n- the token;\n- the spending ceiling;\n- the mandate lifetime;\n- the number of permitted authorizations.\n\nThose decisions belong to deterministic server-side policy.\n\nIn Pegas, model reasoning and financial authority are intentionally different layers.\n\n> **Use the model for reasoning. Use deterministic code for invariants.**\n\nThat distinction matters much more to us than whether the payment API itself is easy to call.\n\n## Why x402\n\nFor the actual machine-to-machine payment flow we chose **x402 V2**.\n\nThe pattern fits the experiment unusually well.\n\nThe Legal service behaves like a paid machine-readable resource.\n\nPegas calls it without payment.\n\nThe service responds with a real HTTP:\n\n**402 Payment Required**\n\nand a structured payment requirement.\n\nPegas then evaluates that exact requirement against its authority.\n\nIf it is approved, the server-side buyer wallet creates the payment payload and sends the signed request.\n\nThe current demo uses:\n\n- x402 V2;\n- `exact` scheme;\n- `upfront` payment flow;\n- Solana Devnet;\n- test USDC;\n- fixed price of 10,000 atomic units, or 0.01 test USDC.\n\nThere is no browser wallet.\n\nThere is no user MetaMask-style confirmation.\n\nThere are no real funds.\n\nThis is specifically a demo of **agent-funded service consumption**.\n\n## The first important implementation lesson: freeze the 402\n\nAn early version of the flow revealed a subtle authority problem.\n\nConceptually, it could do this:\n\n```text\nrequest\n-> receive 402 challenge A\n-> approve challenge A\n-> perform another unpaid request\n-> receive challenge B\n-> sign challenge B\n```\n\nThat looks harmless.\n\nIt is not.\n\nThe deterministic policy would have approved one set of payment terms while the wallet could end up signing another.\n\nThat breaks the entire authority model.\n\nSo we changed the implementation around a simple invariant:\n\n> **The exact 402 challenge that is approved is the exact challenge that gets signed.**\n\nThe first accepted `PAYMENT-REQUIRED` object is frozen.\n\nPolicy evaluates that object.\n\nImmediately before signing, Pegas re-checks the critical authority state.\n\nThen the x402 SDK creates the payment payload from that same frozen challenge.\n\nThere is no second unpaid negotiation between approval and signing.\n\nThis sounds like a small implementation detail.\n\nArchitecturally, it is the difference between:\n\n\"the agent was generally allowed to pay\"\n\nand:\n\n\"the agent signed exactly the transaction terms that deterministic policy approved.\"\n\n## Ten deterministic checks before authorization\n\nFor the demo, Pegas exposes the authority decision as a visible policy chain.\n\nThe current flow checks ten controls before authorization.\n\nThey cover areas such as:\n\n- feature and mandate state;\n- expiry and remaining workflow time;\n- service scope;\n- registered counterparty identity;\n- network allowlist;\n- asset allowlist;\n- fixed amount ceiling;\n- single-authorization constraint;\n- request/privacy binding;\n- budget and rate controls.\n\nA successful live run produced:\n\n**AUTH-01 through AUTH-10: passed.**\n\nThe important part is that these checks are not an LLM-generated explanation of why a payment \"seemed reasonable.\"\n\nThey are deterministic constraints.\n\n## Why Redis exists, and why it is deliberately limited\n\nAdding payments changed one architectural assumption in Pegas.\n\nThe normal workflow is intentionally ephemeral.\n\nWe did not want to turn Pegas into a persistent workflow platform just because one agent could now pay another.\n\nBut financial side effects are different.\n\nA browser can disconnect.\n\nA serverless process can restart.\n\nA request can be replayed.\n\nA settlement can outlive the request that initiated it.\n\nFor that reason we introduced **Upstash Redis**, but with a strict boundary.\n\nRedis stores payment-side state such as:\n\n- idempotency;\n- authorization reservations;\n- budget and concurrency controls;\n- receipts;\n- reconciliation state;\n- consumed mandates;\n- safe reuse of an already-paid operation where appropriate.\n\nIt does **not** become the general Pegas workflow database.\n\nThat boundary was deliberate.\n\nInfrastructure should exist because the side effect requires it, not because persistence is fashionable.\n\n## Settlement is not proof\n\nAnother decision was to avoid treating a successful facilitator response as the final truth.\n\nAfter settlement, Pegas independently checks the blockchain.\n\nThe current stack uses **Alchemy as the Solana RPC evidence provider**.\n\nPegas verifies things such as:\n\n- the correct network;\n- the correct token mint;\n- buyer token decrease;\n- seller token increase;\n- the expected amount;\n- transaction confirmation;\n- the actual transaction signature.\n\nOnly when the observed chain evidence matches the frozen offer do we treat the payment as confirmed.\n\nThe public receipt can then show:\n\n- transaction signature;\n- confirmation status;\n- token payer;\n- recipient owner;\n- asset mint;\n- amount;\n- evidence provider;\n- Solana Explorer link;\n- `transfer_matches_offer: true`.\n\nThis gave us another useful rule:\n\n> **Settlement claims are useful. Independent evidence is better.**\n\n## The live stack\n\nThe current Pegas demo deliberately combines several different infrastructure layers.\n\n### Vercel\n\nThe public Next.js application and deterministic orchestration run on Vercel.\n\nThis layer owns the workflow, policies, payment authority and public API behavior.\n\n### Modal\n\nThe AI runtime is self-hosted through Modal.\n\nModal runs:\n\n- Ollama;\n- qwen3:4b;\n- NVIDIA L4.\n\nThe same model infrastructure serves the specialist AI roles.\n\n### x402\n\nx402 provides the machine-native paid-resource interaction:\n\n```text\n402 challenge\n-> authorization\n-> signed payment\n-> settlement\n```\n\n### Solana Devnet\n\nThe actual demo payment settles on Solana Devnet using test USDC.\n\n### Alchemy\n\nAlchemy provides the Solana RPC connection used for independent on-chain evidence.\n\nAlchemy does not own the wallet and does not authorize the payment.\n\nIts role in Pegas is evidence.\n\n### Upstash Redis\n\nUpstash provides the payment-only persistent state required for idempotency, bounded budgets and receipts.\n\nIt is intentionally not the workflow database.\n\n## Then reality started fighting back\n\nThe architecture looked clean on paper.\n\nThe first live transaction still failed.\n\nThat was useful.\n\n### Problem 1: network identity is not the same thing as RPC genesis\n\nThe x402 / CAIP-2 identifier for the configured Solana Devnet environment is:\n\n```text\nsolana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1\n```\n\nOur setup verification also needed to make sure the RPC endpoint was connected to the intended cluster.\n\nAn implementation mistake treated the CAIP-2 reference as if it were the complete value returned by Solana RPC `getGenesisHash`.\n\nIt is not.\n\nOur actual configured Alchemy Devnet RPC returned:\n\n```text\nEtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG\n```\n\nThe fix was conceptually simple but important:\n\n**network identifier and RPC genesis evidence are separate concepts.**\n\nThe x402 network ID remained unchanged.\n\nThe RPC verification was changed to compare against the actual full genesis hash.\n\nThat allowed the infrastructure setup check to pass cleanly.\n\n### Problem 2: a valid seller wallet is not automatically ready to receive USDC\n\nOur buyer wallet had Devnet SOL and test USDC.\n\nOur seller wallet was a fresh Solana wallet.\n\nEverything appeared ready.\n\nThe first x402 live smoke failed before settlement.\n\nThe facilitator returned:\n\n```text\ninvalid_exact_svm_transaction_simulation_failed\n```\n\nThe buyer still had its full USDC balance, which told us no settlement had happened.\n\nThe missing piece was simple once identified:\n\n**the fresh seller wallet did not yet have the required USDC token account.**\n\nAfter provisioning the seller for Devnet USDC, the same architecture could proceed normally.\n\nThis was a useful reminder that \"valid wallet\" and \"valid destination for this token transfer\" are not always the same thing.\n\n### Problem 3: cold AI infrastructure is still infrastructure\n\nThe full workflow also reminded us that the payment path is only one part of the system.\n\nThe Legal Advisor still needs a model.\n\nOur model runs on Modal, and a cold container may need time to start.\n\nThe x402 portion can be correct while the overall workflow still waits for inference infrastructure.\n\nThat is exactly why we kept payment state separate from consultation state.\n\nIf money has moved, losing the surrounding browser request must not erase that fact.\n\n## The live result\n\nAfter the infrastructure fixes, we ran one controlled Devnet smoke test.\n\nIt worked.\n\nThe system produced:\n\n- a bounded Agent Mandate;\n- identified buyer and seller agents;\n- deterministic approval across all ten controls;\n- one authorization;\n- a real x402 V2 payment;\n- 0.01 test USDC transferred on Solana Devnet;\n- finalized settlement;\n- independent Alchemy chain evidence;\n- a matching transfer;\n- a consumed mandate;\n- a real Legal Advisor response;\n- Reviewer continuation;\n- and a replay check that produced no second payment authorization.\n\nThe transaction itself was visible through Solana Explorer.\n\nMore importantly, the system could explain **why the transaction had been allowed to exist at all**.\n\nThat was the real goal.\n\n## One payment means one payment\n\nA major requirement was that an already-consumed mandate must not accidentally authorize another transaction.\n\nAfter the successful workflow, the smoke test replayed the same request context.\n\nThe result:\n\n**no second payment authorization.**\n\nThe consumed mandate stayed consumed.\n\nThat sounds obvious.\n\nIn agentic systems, obvious invariants are exactly the ones worth proving.\n\n## A small non-payment bug taught us something too\n\nThe successful run also surfaced an unrelated semantic problem in the Legal Advisor output.\n\nThe model produced a verdict equivalent to:\n\n```text\nno_policy_issue_identified\n```\n\nwhile simultaneously listing findings for two policy issues.\n\nStructurally, the JSON was valid.\n\nSemantically, it contradicted itself.\n\nThis is a good example of why structured output schemas alone are not enough.\n\nWe added a semantic validator:\n\nif the verdict says there is no policy issue, the findings list must be empty.\n\nOtherwise the output fails validation and the existing repair mechanism asks the model to correct it.\n\nThe same design principle appears again:\n\n> **Use the model for reasoning. Use deterministic code for invariants.**\n\n## What is actually real in the demo?\n\nWe want to be explicit about that.\n\n### Real\n\n- real qwen3:4b model calls;\n- real self-hosted inference on Modal;\n- real multi-agent orchestration;\n- real HTTP 402 response;\n- real x402 V2 payment payload;\n- real server-side signing;\n- real Solana Devnet settlement;\n- real test USDC movement;\n- real Alchemy RPC evidence;\n- real Upstash-backed payment state;\n- real mandate consumption;\n- real deterministic policy checks;\n- real Legal Advisor result;\n- real duplicate-authorization protection.\n\n### Intentionally demo-scoped\n\n- fictional company;\n- fictional request;\n- Solana Devnet rather than mainnet;\n- test USDC rather than real funds;\n- fixed 0.01 USDC consultation;\n- KYA-lite rather than formal financial identity infrastructure;\n- one bounded Legal service;\n- no claim of regulatory compliance;\n- no claim of bank-grade production readiness;\n- no affiliation with Lead;\n- no legal advice.\n\nThat distinction matters.\n\nThe interesting part of the project is not pretending the prototype is already a financial institution.\n\nIt is showing, concretely, what a controlled architecture could look like.\n\n## What changed in how we think about agents\n\nBefore this extension, Pegas was mostly about coordination:\n\n**Which AI role should act next?**\n\nAgentic Payments changed the question to:\n\n**What is this agent actually allowed to do?**\n\nThat is a much harder and more useful question.\n\nThe moment an AI system can create an external side effect, especially a financial one, routing quality is no longer enough.\n\nYou need:\n\n- identity;\n- authority;\n- constraints;\n- revocation;\n- idempotency;\n- evidence;\n- auditability.\n\nAnd those cannot live only inside a prompt.\n\n## Our main takeaway\n\n> **Making an AI agent send a payment was not the hard part.**\n\nThe harder part was designing a system in which we could answer:\n\n- Why was this agent allowed to pay?\n- Who authorized it?\n- What exactly was it allowed to buy?\n- Which counterparty was permitted?\n- What was the spending limit?\n- Could the seller change the terms?\n- Could the agent pay twice?\n- Could we stop the capability globally?\n- Did the transaction actually settle?\n- Can someone reconstruct what happened afterward?\n\nThat is the part of agentic finance we find most interesting.\n\nAnd that is the idea Pegas is now built to demonstrate.\n\n## Inspired by Lead, implemented independently\n\nSeveral governance ideas in this prototype were conceptually inspired by Lead's September 2026 paper:\n\n**Leading into the AI Revolution: A proposed federal framework for agentic finance.**\n\nIn particular, we found the ideas around:\n\n- principal-agent identity;\n- granular delegated authority;\n- cryptographically verifiable mandates;\n- transaction limits;\n- revocation;\n- audit trails;\n- KYA;\n- and authority intersection in multi-agent chains\n\nespecially useful as a way to think about the problem.\n\nPegas is an independent technical experiment exploring what a subset of those ideas can look like in software today.\n\n**Pegas is not affiliated with or endorsed by Lead, and this prototype should not be interpreted as an implementation of Lead's full regulatory framework.**\n\n## What's next\n\nThe payment itself now works.\n\nThe next phase is less about adding another protocol and more about making the existing system easier to inspect.\n\nWe want a visitor to be able to look at a Pegas run and immediately understand:\n\n```text\nrequest\n-> mandate\n-> identity\n-> policy\n-> 402 quote\n-> authorization\n-> payment\n-> chain evidence\n-> specialist result\n-> review\n```\n\nBecause if autonomous agents are going to perform meaningful external actions, \"the AI decided to do it\" is not a sufficient explanation.\n\nThe authority should be visible.\n\nThe limits should be visible.\n\nAnd the evidence should survive the action.\n\n---\n\n**Reference:** Lead, *Leading into the AI Revolution: A proposed federal framework for agentic finance*, September 2026.\n\n**Disclosure:** Pegas is an independent prototype. It is not affiliated with or endorsed by Lead. The demo uses Solana Devnet and test USDC and is not a claim of regulatory compliance or legal advice.\n";
++
++export const mcpServerArticleMarkdown = "---\ntitle: \"Pegas Became an MCP Server: Other Agents Get a Tool, Not Authority\"\nslug: \"pegas-mcp-server-tool-not-authority\"\ndate: \"2026-10-08\"\nsummary: \"We opened Pegas to external AI agents through the Model Context Protocol. Claude, Cursor or any MCP client can now ask Pegas to route a request or buy a Legal consultation. The interesting part is not the connection. It is what the caller cannot do.\"\n---\n\n# Pegas Became an MCP Server: Other Agents Get a Tool, Not Authority\n\nUntil now, Pegas had one kind of user: a person on the website.\n\nA person types a request. Pegas runs its own open model, passes the request through Intake, Privacy, Routing and Review, and in the paid scenario buys one Legal consultation for 0.01 test USDC on Solana Devnet. Every step is visible, and every payment has evidence.\n\nBut the world we are building for is not only people clicking buttons. More and more work will start with one AI agent asking another one for help. So we asked a simple question:\n\n> What happens when the caller is not a person, but another agent?\n\nThe answer is the newest part of Pegas: an MCP server.\n\n## Why MCP\n\nMCP (Model Context Protocol) is an open standard for connecting AI assistants to external tools and services. If a service speaks MCP, an assistant like Claude can discover what it offers and call it, without custom integration work.\n\nWe had two options:\n\n1. **MCP inside Pegas.** Our own agents call external tools through MCP.\n2. **Pegas as an MCP server.** External agents call Pegas.\n\nWe chose the second one. The first option would be mostly invisible, and a 4-billion-parameter model is not great at choosing between many tools. The second option completes the picture Pegas was built to show:\n\n```text\nown model         → Qwen3 4B on Modal, scale to zero\nagents            → Intake, Privacy, Routing, Legal Advisor, Reviewer\npayment           → x402 on Solana Devnet\ngovernance        → mandate, KYA-lite, AUTH-01..AUTH-10\nconnection        → MCP: other agents can now call Pegas\n```\n\n## Three tools, nothing more\n\nPegas exposes exactly three tools at `/api/mcp`:\n\n- **submit_request**: Runs the free standard workflow and returns a routed request card. Spends: no.\n- **request_legal_consultation**: Runs the paid workflow. If Routing selects Legal, Pegas buys one consultation. Spends: 0.01 test USDC.\n- **get_payment_evidence**: Returns the stored mandate, policy checks and settlement evidence. Spends: no.\n\nWe kept the list short on purpose. Every extra tool is something an external agent can misuse or misunderstand.\n\n## The main idea: a tool is not authority\n\nThis is the part that matters most.\n\nWhen Claude calls `request_legal_consultation`, Claude does **not** get the right to pay. Claude has no keys. Claude does not sign anything. Claude cannot change the price, the seller, the network, the token or the number of payments.\n\nClaude can only ask. Pegas then runs exactly the same checks it runs for a person on the website:\n\n```text\nExternal agent (self-declared, not verified)\n  → Pegas Routing Agent (registered, KYA-lite)\n    → Legal Advisor (registered seller)\n```\n\nEach link in this chain can only narrow authority, never expand it. The external agent sits at the start of the chain, and it has the least authority of all.\n\nWe also made the record honest. The mandate now stores who started the operation. When a request comes from the website, the principal is `pegas-request-desk`. When it comes through MCP, the principal is:\n\n```text\nmcp-external-agent — External agent via MCP (identity not verified)\n```\n\nThis value lives inside the mandate fingerprint and inside the public payment evidence. Anyone who reads the evidence later can see that the purchase was requested by an unverified external agent and paid under Pegas' own bounded mandate.\n\n## One shared lane for strangers\n\nOn the website, payment limits are counted per browser session. External agents have no browser session, and we cannot verify who they are. So all MCP callers share one budget lane: the same per-session and per-hour limits, but applied to all external agents together, inside the global daily budget.\n\nThis is a small decision, but it follows the same principle. An unknown caller should get a narrower lane, not a wider one.\n\n## First real test: Claude found a bug in our answer\n\nWe connected Pegas to Claude as a custom connector and sent a simple technical request: our API returns 500 errors on the `/orders` endpoint.\n\nPegas routed it to the technical team with high priority. Then Claude added something we did not expect. It noticed that our summary said \"50:00 errors\" instead of \"500 errors\".\n\nThe cause was the small model. Qwen3 4B rewrote the number while paraphrasing. We fixed it with one rule in the agent prompts: copy numbers, error codes, paths and amounts exactly.\n\nBut the moment itself is worth noting. The external agent did not just pass our answer along. It checked it. Agents controlling each other is a better pattern than agents blindly trusting each other.\n\n## Second real test: the paid path failed, and that was useful\n\nThe first paid requests through MCP failed. Nothing was spent, and the payment step was never reached.\n\nWe ran the same request through the website and saw the real reason. The Routing agent quotes short pieces of the request as evidence for its decision. In paid mode, after Privacy, Routing only sees a reduced safe summary, not the original text. The model quoted phrases from the original request. A strict check rejected them, the repair attempt failed the same way, and the workflow stopped.\n\nThe standard flow had solved this long ago: quotes that do not match are dropped, and the workflow continues. The paid flow still had the older, stricter rule. We aligned them. Only exact pieces of the allowed text still reach the next agents, so the privacy guarantee did not change.\n\nMCP did not cause this bug. It helped us find it, because a new kind of caller sent requests in a slightly different way.\n\nAfter the fix, the full paid path worked through MCP:\n\n```text\nIntake → Routing selects Legal → mandate created → KYA-lite checked\n→ 402 quote frozen → AUTH 10/10 → payment signed by Pegas\n→ settled → confirmed on Solana Devnet (Alchemy evidence)\n→ mandate consumed → Legal Advisor → Reviewer\n```\n\nThe external agent then called `get_payment_evidence` and saw `principal_id: mcp-external-agent` in the stored evidence.\n\n## Making it visible on the website\n\nA connector in Claude settings is great for developers, but most visitors will never add one. So the Demo page now has a second switch: **Web form** or **AI agent via MCP**.\n\nIn agent mode, a small MCP client runs in your browser and plays the external agent. It speaks real JSON-RPC to the same public `/api/mcp` endpoint:\n\n```text\ninitialize → tools/list → tools/call (with live progress) → get_payment_evidence\n```\n\nOn the left you see the conversation between the agent and Pegas. On the right you see what Pegas does inside: the agent graph, the payment timeline and the evidence. Progress arrives step by step while the work happens, not at the end.\n\nProgress messages carry only public step information: step number, type and agent name. Internal payloads and handoff context never leave the server.\n\n## What this does not prove\n\nPegas is still a demo:\n\n- payments use test USDC on Solana Devnet, not real money;\n- the external agent's identity is self-declared and not verified;\n- the MCP endpoint has no sign-in, so anyone can call it within the public limits;\n- the Legal Advisor applies a small demo policy, not real legal advice.\n\nReal systems would need verified agent identity, signed client metadata, per-client mandates and much stronger key management. MCP's own authorization model is moving in that direction, and Pegas is a good place to try it next.\n\n## The point\n\nConnecting an agent to a payment API is easy. The hard part is deciding what the caller is allowed to do, and proving afterward what actually happened.\n\nWith MCP, Pegas now shows this across a real boundary between agents. Another agent can hire Pegas. It cannot take Pegas' authority. And the evidence says so.\n";
