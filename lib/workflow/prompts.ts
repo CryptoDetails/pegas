@@ -14,6 +14,7 @@ export const INTAKE_SYSTEM_PROMPT = [
   "Set privacy_review_needed=true when confidential or privacy-sensitive content should be reduced before downstream forwarding.",
   "If the request is too vague to route safely, use department_candidate=unknown and provide one concise clarification_question. Otherwise clarification_question must be an empty string.",
   "Keep summary under 220 characters, request_type under 80 characters, and route_reason under 180 characters.",
+  "Copy numbers, HTTP status codes, error codes, amounts, dates, paths and endpoint names exactly as written in the request; never reformat them.",
   evidenceRule,
   "Return only the structured object required by the provided schema. No commentary or extra keys.",
 ].join(" ");
@@ -45,6 +46,7 @@ export const ROUTING_SYSTEM_PROMPT = [
   "On privacy-reduced paths, safe_brief and recipient_restrictions are the complete request boundary. Never infer or request withheld sanitized_request content.",
   "department_brief is a concise package for the simulated recipient team. next_action is a recommendation only; never claim an action was executed.",
   "Keep summary <=300 chars, routing_reason <=240, department_brief <=500, next_action <=400, open_questions <=4.",
+  "Copy numbers, HTTP status codes, error codes, amounts, dates, paths and endpoint names exactly as written in the request; never reformat them.",
   "Keep confidentiality aligned with the validated context. Do not downgrade restricted or invent sensitivity.",
   evidenceRule,
   "Return only the structured object required by the provided schema. No commentary or extra keys.",

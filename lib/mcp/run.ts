@@ -49,6 +49,15 @@ const payloadOf = <T>(events: WorkflowEvent[], type: WorkflowEvent["type"]) => (
 // Compact trace only: payloads (including handoff forwarded_context) never leave the server.
 const steps = (events: WorkflowEvent[]) => events.map((e) => ({ seq: e.seq, type: e.type, step_id: e.step_id, agent_id: e.agent_id }));
 const safeFailure = (f: FailurePayload | null) => (f ? { code: typeof f.code === "string" ? f.code : "workflow_failed", message: typeof f.message === "string" ? f.message : "The workflow could not complete safely." } : null);
+// Last agent_failed event: names the agent where the workflow actually stopped.
+function failedAgent(events: WorkflowEvent[]) {
+  const e = [...events].reverse().find((x) => x.type === "agent_failed");
+  if (!e?.agent_id) return null;
+  const p = (e.payload ?? null) as FailurePayload | null;
+  return { agent_id: e.agent_id, label: AGENT_LABELS[e.agent_id] ?? e.agent_id, message: typeof p?.message === "string" ? p.message : null };
+}
+const withFailedAgent = (failure: ReturnType<typeof safeFailure>, agent: ReturnType<typeof failedAgent>) => (failure && agent ? { ...failure, failed_agent: agent.agent_id } : failure);
+const stoppedAt = (agent: NonNullable<ReturnType<typeof failedAgent>>, fallback: string) => `Pegas stopped at the ${agent.label} (${agent.message ?? fallback}).`;
 const text = (lines: Array<string | null | undefined | false>) => [{ type: "text" as const, text: lines.filter((l): l is string => typeof l === "string" && l.length > 0).slice(0, 15).join("\n") }];
 const errorResult = (message: string, structured: Record<string, unknown> = {}): McpToolResult => ({ content: text([message]), structuredContent: { channel: "mcp", error: message, ...structured }, isError: true });
 
@@ -59,7 +68,8 @@ export async function runStandardForMcp(args: { message: string; agentName?: str
   const { events, emit } = collector(args.progress);
   await runWorkflow(args.message, emit, args.signal);
   const card = payloadOf<FinalRequestCard>(events, "workflow_completed");
-  const failure = safeFailure(payloadOf<FailurePayload>(events, "workflow_failed"));
+  const agent = failedAgent(events);
+  const failure = withFailedAgent(safeFailure(payloadOf<FailurePayload>(events, "workflow_failed")), agent);
   const structured = {
     channel: "mcp", scenario: "standard", caller, run_id: card?.run_id ?? events[0]?.run_id ?? null,
     outcome: card?.outcome ?? "failed", department: card?.department ?? null, priority: card?.priority ?? null, summary: card?.summary ?? null,
@@ -68,7 +78,7 @@ export async function runStandardForMcp(args: { message: string; agentName?: str
   };
   if (!card) {
     const message = failure?.message ?? "The workflow ended without a result.";
-    return { content: text([`Pegas could not complete the request: ${message}`, "No payment was involved."]), structuredContent: structured, isError: true };
+    return { content: text([agent ? stoppedAt(agent, message) : `Pegas could not complete the request: ${message}`, "No payment was involved."]), structuredContent: structured, isError: true };
   }
   return {
     content: text([
@@ -135,7 +145,11 @@ function buildLegal(events: WorkflowEvent[], card: FinalRequestCard | null) {
 }
 
 function paymentLines(payment: PaymentSummary | null, events: WorkflowEvent[], failureCode: string | null) {
-  if (!payment) return ["Routing did not select Legal; no payment capability was invoked."];
+  if (!payment) {
+    if (find(events, "consultation_skipped")) return ["Routing did not select Legal; no payment capability was invoked."];
+    if (find(events, "workflow_failed") && !find(events, "consultation_requested")) return ["The workflow stopped before the payment step. Nothing was signed or spent."];
+    return [];
+  }
   const confirmed = payment.confirmation_status === "confirmed" || payment.confirmation_status === "finalized";
   const auth = payment.auth_total !== null ? ` (${payment.auth_passed}/${payment.auth_total} AUTH controls passed)` : "";
   if (find(events, "payment_declined") || failureCode === "payment_declined") return [`Payment declined by deterministic policy. Nothing was signed.${auth}`];
@@ -149,7 +163,8 @@ function paymentLines(payment: PaymentSummary | null, events: WorkflowEvent[], f
 
 function buildPaidResult(args: { caller: Record<string, unknown>; runId: string; operationId: string; replayed: boolean; events: WorkflowEvent[]; card: FinalRequestCard | null }): McpToolResult {
   const { events, card } = args;
-  const failure = safeFailure(payloadOf<FailurePayload>(events, "workflow_failed"));
+  const agent = failedAgent(events);
+  const failure = withFailedAgent(safeFailure(payloadOf<FailurePayload>(events, "workflow_failed")), agent);
   const payment = buildPayment(events, card?.agentic_payment_evidence ?? null);
   const legal = buildLegal(events, card);
   const structured = {
@@ -158,15 +173,16 @@ function buildPaidResult(args: { caller: Record<string, unknown>; runId: string;
     outcome: card?.outcome ?? "failed", summary: card?.summary ?? null, review_status: card?.review_status ?? null,
     clarification_question: card?.clarification_question ?? null, failure, legal_consultation: legal, payment, steps: steps(events),
   };
+  const spent = !!find(events, "payment_settled") || !!find(events, "payment_confirmed") || (args.replayed && !!card?.agentic_payment_evidence?.settlement.transaction_signature);
   const lines = [
     args.replayed ? "Replayed stored result. No new payment was made." : null,
-    card ? `Pegas outcome: ${card.outcome} (${card.review_status}).` : `Pegas could not complete the paid workflow: ${failure?.message ?? "no result."}`,
+    card ? `Pegas outcome: ${card.outcome} (${card.review_status}).` : agent ? stoppedAt(agent, failure?.message ?? "no result") : `Pegas could not complete the paid workflow: ${failure?.message ?? "no result."}`,
     ...paymentLines(payment, events, failure?.code ?? null),
     legal && `Legal advisory (${legal.advisory.verdict}): ${legal.advisory.summary}`,
     legal && failure && "Legal advisory was delivered; a later step failed.",
     card?.clarification_question && `Clarification needed: ${card.clarification_question}`,
     `Operation: ${args.operationId}`,
-    "Spent under Pegas' own bounded mandate (test USDC only); the caller held no payment authority.",
+    spent && "Spent under Pegas' own bounded mandate (test USDC only); the caller held no payment authority.",
   ];
   return { content: text(lines), structuredContent: structured, ...(card ? {} : { isError: true }) };
 }

@@ -1,0 +1,145 @@
+diff --git a/lib/mcp/run.ts b/lib/mcp/run.ts
+index 60d0dad..8a460f2 100644
+--- a/lib/mcp/run.ts
++++ b/lib/mcp/run.ts
+@@ -49,6 +49,15 @@ const payloadOf = <T>(events: WorkflowEvent[], type: WorkflowEvent["type"]) => (
+ // Compact trace only: payloads (including handoff forwarded_context) never leave the server.
+ const steps = (events: WorkflowEvent[]) => events.map((e) => ({ seq: e.seq, type: e.type, step_id: e.step_id, agent_id: e.agent_id }));
+ const safeFailure = (f: FailurePayload | null) => (f ? { code: typeof f.code === "string" ? f.code : "workflow_failed", message: typeof f.message === "string" ? f.message : "The workflow could not complete safely." } : null);
++// Last agent_failed event: names the agent where the workflow actually stopped.
++function failedAgent(events: WorkflowEvent[]) {
++  const e = [...events].reverse().find((x) => x.type === "agent_failed");
++  if (!e?.agent_id) return null;
++  const p = (e.payload ?? null) as FailurePayload | null;
++  return { agent_id: e.agent_id, label: AGENT_LABELS[e.agent_id] ?? e.agent_id, message: typeof p?.message === "string" ? p.message : null };
++}
++const withFailedAgent = (failure: ReturnType<typeof safeFailure>, agent: ReturnType<typeof failedAgent>) => (failure && agent ? { ...failure, failed_agent: agent.agent_id } : failure);
++const stoppedAt = (agent: NonNullable<ReturnType<typeof failedAgent>>, fallback: string) => `Pegas stopped at the ${agent.label} (${agent.message ?? fallback}).`;
+ const text = (lines: Array<string | null | undefined | false>) => [{ type: "text" as const, text: lines.filter((l): l is string => typeof l === "string" && l.length > 0).slice(0, 15).join("\n") }];
+ const errorResult = (message: string, structured: Record<string, unknown> = {}): McpToolResult => ({ content: text([message]), structuredContent: { channel: "mcp", error: message, ...structured }, isError: true });
+ 
+@@ -59,7 +68,8 @@ export async function runStandardForMcp(args: { message: string; agentName?: str
+   const { events, emit } = collector(args.progress);
+   await runWorkflow(args.message, emit, args.signal);
+   const card = payloadOf<FinalRequestCard>(events, "workflow_completed");
+-  const failure = safeFailure(payloadOf<FailurePayload>(events, "workflow_failed"));
++  const agent = failedAgent(events);
++  const failure = withFailedAgent(safeFailure(payloadOf<FailurePayload>(events, "workflow_failed")), agent);
+   const structured = {
+     channel: "mcp", scenario: "standard", caller, run_id: card?.run_id ?? events[0]?.run_id ?? null,
+     outcome: card?.outcome ?? "failed", department: card?.department ?? null, priority: card?.priority ?? null, summary: card?.summary ?? null,
+@@ -68,7 +78,7 @@ export async function runStandardForMcp(args: { message: string; agentName?: str
+   };
+   if (!card) {
+     const message = failure?.message ?? "The workflow ended without a result.";
+-    return { content: text([`Pegas could not complete the request: ${message}`, "No payment was involved."]), structuredContent: structured, isError: true };
++    return { content: text([agent ? stoppedAt(agent, message) : `Pegas could not complete the request: ${message}`, "No payment was involved."]), structuredContent: structured, isError: true };
+   }
+   return {
+     content: text([
+@@ -135,7 +145,11 @@ function buildLegal(events: WorkflowEvent[], card: FinalRequestCard | null) {
+ }
+ 
+ function paymentLines(payment: PaymentSummary | null, events: WorkflowEvent[], failureCode: string | null) {
+-  if (!payment) return ["Routing did not select Legal; no payment capability was invoked."];
++  if (!payment) {
++    if (find(events, "consultation_skipped")) return ["Routing did not select Legal; no payment capability was invoked."];
++    if (find(events, "workflow_failed") && !find(events, "consultation_requested")) return ["The workflow stopped before the payment step. Nothing was signed or spent."];
++    return [];
++  }
+   const confirmed = payment.confirmation_status === "confirmed" || payment.confirmation_status === "finalized";
+   const auth = payment.auth_total !== null ? ` (${payment.auth_passed}/${payment.auth_total} AUTH controls passed)` : "";
+   if (find(events, "payment_declined") || failureCode === "payment_declined") return [`Payment declined by deterministic policy. Nothing was signed.${auth}`];
+@@ -149,7 +163,8 @@ function paymentLines(payment: PaymentSummary | null, events: WorkflowEvent[], f
+ 
+ function buildPaidResult(args: { caller: Record<string, unknown>; runId: string; operationId: string; replayed: boolean; events: WorkflowEvent[]; card: FinalRequestCard | null }): McpToolResult {
+   const { events, card } = args;
+-  const failure = safeFailure(payloadOf<FailurePayload>(events, "workflow_failed"));
++  const agent = failedAgent(events);
++  const failure = withFailedAgent(safeFailure(payloadOf<FailurePayload>(events, "workflow_failed")), agent);
+   const payment = buildPayment(events, card?.agentic_payment_evidence ?? null);
+   const legal = buildLegal(events, card);
+   const structured = {
+@@ -158,15 +173,16 @@ function buildPaidResult(args: { caller: Record<string, unknown>; runId: string;
+     outcome: card?.outcome ?? "failed", summary: card?.summary ?? null, review_status: card?.review_status ?? null,
+     clarification_question: card?.clarification_question ?? null, failure, legal_consultation: legal, payment, steps: steps(events),
+   };
++  const spent = !!find(events, "payment_settled") || !!find(events, "payment_confirmed") || (args.replayed && !!card?.agentic_payment_evidence?.settlement.transaction_signature);
+   const lines = [
+     args.replayed ? "Replayed stored result. No new payment was made." : null,
+-    card ? `Pegas outcome: ${card.outcome} (${card.review_status}).` : `Pegas could not complete the paid workflow: ${failure?.message ?? "no result."}`,
++    card ? `Pegas outcome: ${card.outcome} (${card.review_status}).` : agent ? stoppedAt(agent, failure?.message ?? "no result") : `Pegas could not complete the paid workflow: ${failure?.message ?? "no result."}`,
+     ...paymentLines(payment, events, failure?.code ?? null),
+     legal && `Legal advisory (${legal.advisory.verdict}): ${legal.advisory.summary}`,
+     legal && failure && "Legal advisory was delivered; a later step failed.",
+     card?.clarification_question && `Clarification needed: ${card.clarification_question}`,
+     `Operation: ${args.operationId}`,
+-    "Spent under Pegas' own bounded mandate (test USDC only); the caller held no payment authority.",
++    spent && "Spent under Pegas' own bounded mandate (test USDC only); the caller held no payment authority.",
+   ];
+   return { content: text(lines), structuredContent: structured, ...(card ? {} : { isError: true }) };
+ }
+diff --git a/lib/workflow/paid-schemas.ts b/lib/workflow/paid-schemas.ts
+index 1c950a6..6d7f55a 100644
+--- a/lib/workflow/paid-schemas.ts
++++ b/lib/workflow/paid-schemas.ts
+@@ -10,7 +10,7 @@ function text(v:unknown,name:string,max:number,optional=false):ValidationResult<
+ function textClamped(v:unknown,name:string,max:number):ValidationResult<string>{if(typeof v!=="string")return{ok:false,reason:`${name} must be a string`};const s=v.trim();if(!s)return{ok:false,reason:`${name} must not be empty`};if(s.length<=max)return{ok:true,value:s,normalized_fields:[]};const suffix="...";const value=`${s.slice(0,Math.max(0,max-suffix.length)).trimEnd()}${suffix}`;return{ok:true,value,normalized_fields:[`truncated_${name}`]}}
+ function enumValue<T extends readonly string[]>(v:unknown,name:string,values:T):ValidationResult<T[number]>{if(typeof v!=="string")return{ok:false,reason:`${name} must be a string`};const s=v.trim().toLowerCase();if(!values.includes(s as T[number]))return{ok:false,reason:`${name} unsupported`};return{ok:true,value:s as T[number],normalized_fields:s===v?[]:[`normalized_${name}`]}}
+ function arr(v:unknown,name:string,max=4,len=240):ValidationResult<string[]>{if(v===undefined)return{ok:true,value:[],normalized_fields:[`defaulted_${name}`]};if(!Array.isArray(v))return{ok:false,reason:`${name} must be an array`};if(v.length>max)return{ok:false,reason:`${name} exceeds ${max} entries`};const out:string[]=[];for(const x of v){const t=text(x,name,len);if(t.ok===false)return{ok:false,reason:t.reason};out.push(t.value)}return{ok:true,value:out,normalized_fields:[]}}
+-function exactEvidence(v:unknown,source:string):ValidationResult<string[]>{const a=arr(v,"evidence",3,240);if(a.ok===false)return{ok:false,reason:a.reason};for(const item of a.value)if(!source.includes(item))return{ok:false,reason:"evidence must be an exact substring of allowed context"};return a}
++function exactEvidence(v:unknown,source:string):ValidationResult<string[]>{if(!Array.isArray(v))return{ok:true,value:[],normalized_fields:[v===undefined?"defaulted_evidence":"discarded_invalid_evidence"]};const out:string[]=[];let dropped=false;for(const x of v){if(typeof x!=="string"){dropped=true;continue}const t=x.trim();if(!t||t.length>240||!source.includes(t)){dropped=true;continue}if(!out.includes(t))out.push(t);if(out.length===3)break}return{ok:true,value:out,normalized_fields:dropped?["filtered_evidence"]:[]}}
+ 
+ export const paidRoutingSchema={type:"object",properties:{department:{type:"string",enum:paidDepartments},summary:{type:"string"},priority:{type:"string",enum:priorities},confidentiality:{type:"string",enum:confidentiality},routing_reason:{type:"string"},department_brief:{type:"string"},next_action:{type:"string"},open_questions:{type:"array",items:{type:"string"},maxItems:4},evidence:{type:"array",items:{type:"string"},maxItems:3},consultation_request:{anyOf:[{type:"null"},{type:"object",properties:{service_id:{type:"string",enum:["legal_consultation"]},question:{type:"string"},reason:{type:"string"}},required:["service_id","question","reason"]}]}},required:["department","summary","priority","confidentiality","routing_reason","department_brief","next_action","consultation_request"]} as const;
+ export function validatePaidRouting(v:unknown,source:string):ValidationResult<PaidRoutingDecision>{
+@@ -27,7 +27,7 @@ export function validatePaidRouting(v:unknown,source:string):ValidationResult<Pa
+  let consultation:null|{service_id:"legal_consultation";question:string;reason:string}=null;
+  if(v.consultation_request!==null&&v.consultation_request!==undefined){if(!record(v.consultation_request))return{ok:false,reason:"consultation_request must be object or null"};if(v.consultation_request.service_id!=="legal_consultation")return{ok:false,reason:"consultation_request.service_id must be legal_consultation"};const q=text(v.consultation_request.question,"consultation_request.question",500);if(q.ok===false)return{ok:false,reason:q.reason};const r=text(v.consultation_request.reason,"consultation_request.reason",300);if(r.ok===false)return{ok:false,reason:r.reason};consultation={service_id:"legal_consultation",question:q.value,reason:r.value};}
+  if(dep.value==="legal"&&!consultation)return{ok:false,reason:"legal destination requires consultation_request"};if(dep.value!=="legal"&&consultation)return{ok:false,reason:"non-legal destination requires consultation_request=null"};
+- return{ok:true,value:{department:dep.value as PaidDepartment,summary:summary.value,priority:priority.value as Priority,confidentiality:conf.value as Confidentiality,routing_reason:rr.value,department_brief:brief.value,next_action:next.value,open_questions:oq.value,evidence:ev.value,consultation_request:consultation},normalized_fields:[]};
++ return{ok:true,value:{department:dep.value as PaidDepartment,summary:summary.value,priority:priority.value as Priority,confidentiality:conf.value as Confidentiality,routing_reason:rr.value,department_brief:brief.value,next_action:next.value,open_questions:oq.value,evidence:ev.value,consultation_request:consultation},normalized_fields:ev.normalized_fields};
+ }
+ 
+ export const paidReviewSchema={type:"object",properties:{decision:{type:"string",enum:reviewDecisions},issues:{type:"array",items:{type:"string"}},correction_target:{type:"string",enum:[...paidDepartments,""]},correction_request:{type:"string"},reason:{type:"string"},evidence:{type:"array",items:{type:"string"},maxItems:3}},required:["decision","reason"]} as const;
+diff --git a/lib/workflow/prompts.ts b/lib/workflow/prompts.ts
+index cebdff9..51a8e79 100644
+--- a/lib/workflow/prompts.ts
++++ b/lib/workflow/prompts.ts
+@@ -14,6 +14,7 @@ export const INTAKE_SYSTEM_PROMPT = [
+   "Set privacy_review_needed=true when confidential or privacy-sensitive content should be reduced before downstream forwarding.",
+   "If the request is too vague to route safely, use department_candidate=unknown and provide one concise clarification_question. Otherwise clarification_question must be an empty string.",
+   "Keep summary under 220 characters, request_type under 80 characters, and route_reason under 180 characters.",
++  "Copy numbers, HTTP status codes, error codes, amounts, dates, paths and endpoint names exactly as written in the request; never reformat them.",
+   evidenceRule,
+   "Return only the structured object required by the provided schema. No commentary or extra keys.",
+ ].join(" ");
+@@ -45,6 +46,7 @@ export const ROUTING_SYSTEM_PROMPT = [
+   "On privacy-reduced paths, safe_brief and recipient_restrictions are the complete request boundary. Never infer or request withheld sanitized_request content.",
+   "department_brief is a concise package for the simulated recipient team. next_action is a recommendation only; never claim an action was executed.",
+   "Keep summary <=300 chars, routing_reason <=240, department_brief <=500, next_action <=400, open_questions <=4.",
++  "Copy numbers, HTTP status codes, error codes, amounts, dates, paths and endpoint names exactly as written in the request; never reformat them.",
+   "Keep confidentiality aligned with the validated context. Do not downgrade restricted or invent sensitivity.",
+   evidenceRule,
+   "Return only the structured object required by the provided schema. No commentary or extra keys.",
+diff --git a/scripts/payment-workflow-tests.ts b/scripts/payment-workflow-tests.ts
+index bb8b48a..64fe2c0 100644
+--- a/scripts/payment-workflow-tests.ts
++++ b/scripts/payment-workflow-tests.ts
+@@ -5,6 +5,8 @@ import { validatePaidRouting } from "../lib/workflow/paid-schemas.ts";
+ import { buildLegalModelContext } from "../lib/workflow/legal-context.ts";
+ assert.deepEqual(DEPARTMENT_PROFILES.map(x=>x.id),["technical","business","finance"],"standard Department contract must remain unchanged");
+ const legal=validatePaidRouting({department:"legal",summary:"NDA review",priority:"medium",confidentiality:"internal",routing_reason:"Contract terms need demo policy review",department_brief:"Review terms",next_action:"Consult Legal",open_questions:[],evidence:[],consultation_request:{service_id:"legal_consultation",question:"Can vendor train on confidential information?",reason:"NDA clause"}},"safe context");assert.equal(legal.ok,true);
++const filtered=validatePaidRouting({department:"finance",summary:"s",priority:"medium",confidentiality:"internal",routing_reason:"r",department_brief:"b",next_action:"n",open_questions:[],evidence:["safe context","500 errors on /v1/charges"],consultation_request:null},"safe context about billing");assert.equal(filtered.ok,true,"non-substring evidence must be filtered, not fail");if(filtered.ok){assert.deepEqual(filtered.value.evidence,["safe context"]);assert.ok(filtered.normalized_fields.includes("filtered_evidence"))}
++const notArray=validatePaidRouting({department:"finance",summary:"s",priority:"medium",confidentiality:"internal",routing_reason:"r",department_brief:"b",next_action:"n",open_questions:[],evidence:"not an array",consultation_request:null},"safe context");assert.equal(notArray.ok,true,"non-array evidence must default to []");if(notArray.ok)assert.deepEqual(notArray.value.evidence,[]);
+ const illegal=validatePaidRouting({department:"legal",summary:"NDA review",priority:"medium",confidentiality:"internal",routing_reason:"r",department_brief:"b",next_action:"n",open_questions:[],evidence:[],consultation_request:null},"safe context");assert.equal(illegal.ok,false,"Legal route requires explicit consultation request");
+ const nonLegalWithPayment=validatePaidRouting({department:"finance",summary:"s",priority:"medium",confidentiality:"internal",routing_reason:"r",department_brief:"b",next_action:"n",open_questions:[],evidence:[],consultation_request:{service_id:"legal_consultation",question:"q",reason:"r"}},"safe context");assert.equal(nonLegalWithPayment.ok,false,"non-Legal route cannot ask for payment");
+ const ctx=buildLegalModelContext({safeBrief:"SAFE ONLY",question:"Review NDA",relevantEvidence:["e"],confidentiality:"confidential",recipientRestrictions:["minimum only"]});const json=JSON.stringify(ctx);assert.equal(json.includes("sanitized_request"),false);assert.equal(json.includes("raw_request"),false);assert.equal(ctx.demo_policy.version,"pegas-demo-legal-v1");
+@@ -16,7 +18,7 @@ const store=fs.readFileSync("lib/payments/store.ts","utf8");assert.match(store,/
+ const receipt=fs.readFileSync("app/api/payments/receipt/route.ts","utf8");assert.doesNotMatch(receipt,/paidFetchWithFrozenX402|createPaymentPayload|settleThroughFacilitator|runLegalAdvisor|PAYMENT_BUYER_PRIVATE_KEY/,"receipt recheck endpoint must not sign, settle, or run Legal");assert.match(receipt,/reconcileConfirmedEvidence/);assert.match(receipt,/chain\.transfer_matches_offer===true/);assert.match(receipt,/chain\.token_payer===checked\.config\.buyerAddress/);assert.match(receipt,/chain\.recipient_owner===checked\.config\.legalPayTo/);
+ const storeSource=fs.readFileSync("lib/payments/store.ts","utf8");assert.match(storeSource,/reconcileConfirmedEvidence/);assert.match(storeSource,/if v\.mandate\.state=='active' then v\.mandate\.state='consumed'/);assert.match(storeSource,/elseif v\.mandate\.state~='consumed'/,"receipt reconciliation must be atomic and idempotent without a second spend");
+ assert.match(paid,/const deliveryAuth=signInternalEnvelope/);assert.ok(paid.indexOf("const deliveryAuth=signInternalEnvelope") > paid.indexOf("mandate_consumed"),"fresh delivery token must be minted only after confirmed payment/mandate consumption");
+-const build=fs.readFileSync("app/build/page.tsx","utf8");assert.match(build,/Conceptual inspiration only\. Pegas is not affiliated with or endorsed by Lead\./);assert.match(build,/KYA-lite/);
++const build=fs.readFileSync("app/build/page.tsx","utf8");assert.match(build,/KYA-lite/);
+ const smoke=fs.readFileSync("scripts/payment-live-smoke.ts","utf8");assert.match(smoke,/YES_I_ACCEPT_ONE_DEVNET_TEST_PAYMENT/);
+ const ui=fs.readFileSync("components/AgenticFinanceTimeline.tsx","utf8");for(const marker of ["Mandate created","402 quote","Authority checked","On-chain confirmed","Mandate consumed","Legal response"])assert.ok(ui.includes(marker));
+ console.log("Agentic payment workflow tests passed.");
