@@ -5,10 +5,13 @@ export const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU" a
 export const LEGAL_AMOUNT_ATOMIC = "10000" as const;
 
 export type AgentMandateState = "active" | "consumed" | "revoked" | "expired";
+export type MandatePrincipal =
+  | { type: "application"; id: "pegas-request-desk"; label: "Pegas Request Desk" }
+  | { type: "external_agent"; id: "mcp-external-agent"; label: "External agent via MCP (identity not verified)" };
 export type AgentMandate = {
   mandate_id: string;
   operation_id: string;
-  principal: { type: "application"; id: "pegas-request-desk"; label: "Pegas Request Desk" };
+  principal: MandatePrincipal;
   acting_agent: { agent_id: "pegas:routing-agent:v1"; role: "routing_agent" };
   service_id: "legal_consultation";
   purpose: string;
@@ -76,7 +79,7 @@ export type PublicAgenticPaymentEvidence = {
   authority: {
     mandate_id: string;
     mandate_fingerprint_sha256: string;
-    principal_id: "pegas-request-desk";
+    principal_id: MandatePrincipal["id"];
     acting_agent_id: "pegas:routing-agent:v1";
     counterparty_agent_id: "pegas:legal-advisor:v1";
     service_id: "legal_consultation";
