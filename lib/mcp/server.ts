@@ -11,16 +11,16 @@ export const MCP_SERVER_INSTRUCTIONS = [
   "Do not send secrets or personal data.",
 ].join("\n");
 
-const MAX_PROGRESS = 40;
+const MAX_PROGRESS = 80;
 
 function progressFor(ctx: ServerContext): ProgressFn | undefined {
   const token = ctx.mcpReq._meta?.progressToken;
   if (token === undefined) return undefined;
   let sent = 0;
-  return (message) => {
+  return (message, step) => {
     if (sent >= MAX_PROGRESS) return;
     sent += 1;
-    void ctx.mcpReq.notify({ method: "notifications/progress", params: { progressToken: token, progress: sent, message } }).catch(() => undefined);
+    void ctx.mcpReq.notify({ method: "notifications/progress", params: { progressToken: token, progress: sent, message, _meta: { "pegas/step": step } } }).catch(() => undefined);
   };
 }
 

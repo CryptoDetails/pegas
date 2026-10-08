@@ -7,9 +7,11 @@ import { AgenticFinanceTimeline } from "./AgenticFinanceTimeline";
 import { AgenticPaymentInspector } from "./AgenticPaymentInspector";
 import { AppHeader } from "./AppHeader";
 import { HandoffInspector } from "./HandoffInspector";
+import { McpAgentPanel, type Delegation, type TranscriptEntry } from "./McpAgentPanel";
 import { ModelRuntimeControl } from "./ModelRuntimeControl";
 import { WorkflowGraph, type GraphStates, type HandoffPulse, type NodeState } from "./WorkflowGraph";
 import { WorkflowResultCard } from "./WorkflowResultCard";
+import { BrowserMcpClient, type JsonRpcMessage, type McpToolCallResult } from "@/lib/mcp/browser-client";
 import type { FinalRequestCard, Handoff, PaidDepartment, WorkflowEvent, WorkflowScenario } from "@/lib/workflow/types";
 
 const presets = {
@@ -18,7 +20,10 @@ const presets = {
   Finance: "A fictional partner says invoice INV-DEMO-104 appears to include the same service charge twice. Please review the billing request and suggest the next step.",
   Privacy: "This fictional request includes confidential partner pricing for an unreleased agreement. Please route it to the appropriate team without forwarding unnecessary details.",
 };
-const paidPreset = "Please review a vendor NDA before signature. It lets the vendor use our confidential information to train its AI models and does not specify when shared information must be deleted or returned. Should our Legal team review these terms?";
+const paidPreset = "We need a legal review of a contract clause before signing. Our vendor NDA allows the vendor to use our shared information to train its AI models and to keep that information for 5 years after the agreement ends. Is this clause legally acceptable, and what should we ask to change?";
+const MCP_AGENT_NAME = "Pegas demo agent (browser)";
+type Channel = "web" | "mcp";
+type StepMeta = { seq: number; type: WorkflowEvent["type"]; step_id: string; agent_id: string | null };
 const initialStates: GraphStates = { intake: "idle", privacy: "idle", routing: "idle", legal: "idle", reviewer: "idle" };
 
 function isPaidDepartment(v: unknown): v is PaidDepartment {
@@ -37,6 +42,11 @@ function isHandoff(v: unknown): v is Handoff {
 }
 
 export function RequestDeskWorkspace() {
+  const [channel, setChannel] = useState<Channel>("web");
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const [delegation, setDelegation] = useState<Delegation | null>(null);
+  const [failedAgentNote, setFailedAgentNote] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [scenario, setScenario] = useState<WorkflowScenario>("standard");
   const [message, setMessage] = useState(presets.Technical);
   const [states, setStates] = useState<GraphStates>(initialStates);
@@ -56,7 +66,10 @@ export function RequestDeskWorkspace() {
   const [activityOpen, setActivityOpen] = useState(false);
   const seenIds = useRef(new Set<string>());
   const demoFormRef = useRef<HTMLDivElement>(null);
+  const transcriptIdRef = useRef(0);
+  const mcpRunRef = useRef(0);
   const busy = status === "running";
+  const agentMode = channel === "mcp";
   const paidMode = scenario === "paid_legal";
   const paymentGuardrailStopped = errorCode === "payment_declined" && (validationDetail === "rate_limit" || validationDetail === "session_budget" || validationDetail === "daily_budget");
   const legalDeliveryIncomplete = errorCode === "legal_delivery_failed";
@@ -150,6 +163,23 @@ export function RequestDeskWorkspace() {
     setSelected(null);
     setError(null);
     setErrorCode(null);
+    setTranscript([]);
+    setDelegation(null);
+    setFailedAgentNote(null);
+  }
+
+  function switchChannel(next: Channel) {
+    if (busy || next === channel) return;
+    setChannel(next);
+    switchMode(scenario);
+  }
+
+  async function copyEndpoint() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/api/mcp`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard may be unavailable */ }
   }
 
   function focusAgenticFinanceDemo() {
@@ -158,9 +188,7 @@ export function RequestDeskWorkspace() {
     requestAnimationFrame(() => demoFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }
 
-  async function submit() {
-    const trimmed = message.trim();
-    if (!trimmed || busy) return;
+  function resetRun() {
     seenIds.current.clear();
     setStates(initialStates);
     setSelected(null);
@@ -176,7 +204,17 @@ export function RequestDeskWorkspace() {
     setManual(false);
     setRevisionNotice(null);
     setActivityOpen(false);
+    setTranscript([]);
+    setDelegation(null);
+    setFailedAgentNote(null);
     setStatus("running");
+  }
+
+  async function submit() {
+    const trimmed = message.trim();
+    if (!trimmed || busy) return;
+    if (agentMode) return submitViaMcp(trimmed);
+    resetRun();
     let terminal = false;
     try {
       const body = paidMode
@@ -215,6 +253,74 @@ export function RequestDeskWorkspace() {
     }
   }
 
+  async function submitViaMcp(trimmed: string) {
+    resetRun();
+    // Unique per run: ModelRuntimeControl remembers processed event ids across runs.
+    const runKey = ++mcpRunRef.current;
+    const client = new BrowserMcpClient({
+      onTraffic: (entry) => setTranscript((previous) => [...previous, { ...entry, id: ++transcriptIdRef.current }]),
+    });
+    const fail = (text: string) => { setError(text); setStatus("failed"); };
+
+    const init = await client.initialize((m) => {
+      const info = (m.result as { serverInfo?: { name?: string; version?: string } } | undefined)?.serverInfo;
+      return `Connected to ${info?.name ?? "server"} ${info?.version ?? ""}`.trim();
+    });
+    if (!init.ok) return fail(`MCP initialize failed: ${init.message}`);
+    const tools = await client.listTools((m) => {
+      const list = (m.result as { tools?: Array<{ name: string }> } | undefined)?.tools ?? [];
+      return `${list.length} tools: ${list.map((t) => t.name).join(", ")}`;
+    });
+    if (!tools.ok) return fail(`MCP tools/list failed: ${tools.message}`);
+
+    const tool = paidMode ? "request_legal_consultation" : "submit_request";
+    const args: Record<string, unknown> = { message: trimmed, agent_name: MCP_AGENT_NAME, ...(paidMode ? { request_id: crypto.randomUUID() } : {}) };
+    const call = await client.callTool(tool, args, {
+      summary: paidMode ? "Buy one Legal consultation for this request" : "Route this request",
+      summarize: summarizeToolResult,
+      onProgress: (p) => {
+        const step = p._meta?.["pegas/step"] as StepMeta | undefined;
+        if (!step || typeof step.seq !== "number" || step.type === "workflow_completed" || step.type === "workflow_failed") return;
+        applyEvent({ event_version: 1, run_id: "mcp", event_id: `mcp-${runKey}-${step.seq}`, seq: step.seq, type: step.type, timestamp: new Date().toISOString(), step_id: step.step_id, agent_id: step.agent_id, payload: null });
+      },
+    });
+    if (!call.ok) {
+      if (call.kind === "no_result") {
+        setStatus("interrupted");
+        setError("The event stream ended before a terminal workflow event. This run was not treated as success.");
+        return;
+      }
+      return fail(call.message);
+    }
+
+    const structured = call.result.structuredContent ?? {};
+    const chain = structured.delegation_chain;
+    if (Array.isArray(chain)) {
+      setDelegation({
+        chain: chain.map((link: { label?: unknown; identity?: unknown }) => ({ label: String(link.label ?? ""), identity: typeof link.identity === "string" ? link.identity : undefined })),
+        note: typeof structured.authority_note === "string" ? structured.authority_note : null,
+      });
+    }
+    const finalCard = (structured.final_card ?? null) as FinalRequestCard | null;
+    if (call.result.isError || !finalCard) {
+      const failure = structured.failure as { message?: string; failed_agent?: string } | null | undefined;
+      const textBlock = call.result.content?.find((c) => c.type === "text")?.text;
+      setFailedAgentNote(failure?.failed_agent ? `Stopped at: ${failure.failed_agent}` : null);
+      fail(failure?.message ?? (typeof structured.error === "string" ? structured.error : null) ?? textBlock ?? "The MCP tool call failed.");
+    } else {
+      setCard(finalCard);
+      const department = finalCard.paid_department ?? finalCard.department;
+      if (isPaidDepartment(department)) setSelected(department);
+      setManual(finalCard.outcome === "manual_review");
+      setStatus("idle");
+    }
+
+    const operationId = structured.operation_id;
+    if (paidMode && typeof operationId === "string") {
+      await client.callTool("get_payment_evidence", { operation_id: operationId }, { summary: "Show me the stored payment evidence", summarize: summarizeEvidence });
+    }
+  }
+
   return (
     <div className="min-h-screen">
       <AppHeader active="demo" />
@@ -225,6 +331,19 @@ export function RequestDeskWorkspace() {
           <section className="min-w-0" aria-label="Request demo">
             <div ref={demoFormRef} className={`rounded-3xl border bg-white p-5 card-shadow transition ${paidMode ? "border-indigo-300 shadow-[0_18px_55px_rgba(79,93,245,0.12)]" : "border-slate-200"}`}>
               <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+                <Mode active={!agentMode} onClick={() => switchChannel("web")}>Web form</Mode>
+                <Mode active={agentMode} onClick={() => switchChannel("mcp")}>AI agent via MCP</Mode>
+              </div>
+              {agentMode && (
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <p>A built-in MCP client in your browser plays an external AI agent. It discovers Pegas tools and calls them over the Model Context Protocol, the way Claude or Cursor would. It gets a tool, not payment authority.</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
+                    <span className="min-w-0 break-all">Use it from your own agent: <code className="font-mono text-[11px] text-indigo-700">{mcpEndpoint()}</code></span>
+                    <button type="button" onClick={copyEndpoint} className="focus-ring rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:border-[var(--pegas-blue)] hover:text-[var(--pegas-blue-dark)]">{copied ? "Copied" : "Copy"}</button>
+                  </div>
+                </div>
+              )}
+              <div className="mt-3 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
                 <Mode active={!paidMode} onClick={() => switchMode("standard")}>Standard request</Mode>
                 <Mode active={paidMode} onClick={() => switchMode("paid_legal")}>
                   <span className="inline-flex items-center gap-1.5">Paid Legal <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] text-indigo-700">x402 LIVE</span></span>
@@ -250,11 +369,12 @@ export function RequestDeskWorkspace() {
               </div>
               <button type="button" onClick={submit} disabled={busy || !message.trim()} aria-busy={busy} className="pegas-primary-button focus-ring mt-5 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-sm font-bold text-white shadow-[0_14px_30px_rgba(63,94,251,0.2)] disabled:cursor-not-allowed">
                 {busy && <span className="pegas-spinner" aria-hidden="true" />}
-                {busy ? "Running workflow…" : "Send a request"}
+                {agentMode ? (busy ? "Agent is calling Pegas…" : "Send via MCP agent") : busy ? "Running workflow…" : "Send a request"}
               </button>
               {liveLabel && <div className="mt-3 flex items-start gap-2 rounded-2xl border border-[var(--pegas-border)] bg-[var(--pegas-blue-soft)] px-3 py-2.5 text-xs leading-5 text-[var(--pegas-blue-dark)]"><span className="mt-1 h-2 w-2 shrink-0 animate-pulse rounded-full bg-[var(--pegas-blue)]" /><span>{liveLabel}</span></div>}
               {revisionNotice && <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs font-semibold text-violet-800">{revisionNotice}</div>}
             </div>
+            {agentMode && <McpAgentPanel entries={transcript} delegation={delegation} running={busy} />}
           </section>
 
           <div className="min-w-0 space-y-6">
@@ -265,6 +385,7 @@ export function RequestDeskWorkspace() {
                 <p className={`text-sm font-bold ${legalDeliveryIncomplete || paymentGuardrailStopped ? "text-amber-900" : "text-rose-800"}`}>{status === "interrupted" ? "Interrupted" : legalDeliveryIncomplete ? "Payment verified · Legal delivery incomplete" : paymentGuardrailStopped ? "Payment guardrail stopped this run" : "Workflow error"}</p>
                 <p className={`mt-2 text-sm leading-6 ${legalDeliveryIncomplete || paymentGuardrailStopped ? "text-amber-800" : "text-rose-700"}`}>{error}</p>
                 {!legalDeliveryIncomplete && !paymentGuardrailStopped && backendResponded && <p className="mt-2 text-xs font-semibold text-rose-700">Backend response received. The failure happened during structured-output validation.</p>}
+                {failedAgentNote && <p className="mt-2 text-xs font-semibold text-rose-700">{failedAgentNote}</p>}
                 {!legalDeliveryIncomplete && !paymentGuardrailStopped && validationDetail && <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 font-mono text-[11px] leading-5 text-rose-800">{validationDetail}</p>}
               </div>
             )}
@@ -291,6 +412,35 @@ export function RequestDeskWorkspace() {
       </main>
     </div>
   );
+}
+
+function mcpEndpoint() {
+  return typeof window === "undefined" ? "/api/mcp" : `${window.location.origin}/api/mcp`;
+}
+
+function summarizeToolResult(message: JsonRpcMessage) {
+  const result = (message.result ?? {}) as McpToolCallResult;
+  const s = result.structuredContent ?? {};
+  const failure = s.failure as { message?: string } | null | undefined;
+  if (result.isError) return `Error: ${failure?.message ?? (typeof s.error === "string" ? s.error : "tool call failed")}`;
+  const parts = [`Outcome ${String(s.outcome ?? "unknown")}`];
+  const payment = s.payment as { auth_passed?: number | null; auth_total?: number | null; confirmation_status?: string | null } | null | undefined;
+  if (payment) {
+    if (typeof payment.auth_total === "number") parts.push(`AUTH ${payment.auth_passed}/${payment.auth_total}`);
+    if (payment.confirmation_status) parts.push(`tx ${payment.confirmation_status}`);
+  } else if (typeof s.department === "string") parts.push(s.department);
+  if (s.replayed === true) parts.push("replayed");
+  return parts.join(" · ");
+}
+
+function summarizeEvidence(message: JsonRpcMessage) {
+  const result = (message.result ?? {}) as McpToolCallResult;
+  const s = result.structuredContent ?? {};
+  if (result.isError) return `Error: ${typeof s.error === "string" ? s.error : "evidence unavailable"}`;
+  const evidence = s.evidence as { authority?: { principal_id?: string; state?: string } } | null | undefined;
+  if (!evidence?.authority) return `Operation ${String(s.state ?? "")}: no payment evidence recorded`;
+  const principal = evidence.authority.principal_id ?? "unknown";
+  return `Principal on the mandate: ${principal}${principal === "mcp-external-agent" ? " (not verified)" : ""} · mandate ${evidence.authority.state ?? "unknown"}`;
 }
 
 function Mode({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {

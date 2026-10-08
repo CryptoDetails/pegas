@@ -6,7 +6,8 @@ import type { MandatePolicyDecision, PublicAgenticPaymentEvidence } from "../pay
 export const MCP_SESSION_SCOPE = "mcp:external-agents";
 
 export type McpToolResult = { content: Array<{ type: "text"; text: string }>; structuredContent: Record<string, unknown>; isError?: boolean };
-export type ProgressFn = (message: string) => void;
+export type ProgressStep = { seq: number; type: WorkflowEvent["type"]; step_id: string; agent_id: string | null };
+export type ProgressFn = (message: string, step: ProgressStep) => void;
 type RunOptions = { signal?: AbortSignal; progress?: ProgressFn };
 type FailurePayload = { code?: string; message?: string };
 
@@ -25,13 +26,21 @@ export function sanitizeAgentName(raw: string | undefined) {
   return name || "unnamed external agent";
 }
 
+const EVENT_LABELS: Partial<Record<WorkflowEvent["type"], string>> = {
+  review_completed: "Reviewer completed", consultation_requested: "Legal consultation requested", counterparty_verified: "Counterparty verified (KYA-lite)",
+  consultation_completed: "Legal advisory delivered", consultation_skipped: "No paid consultation needed", routing_decision: "Routing decided",
+};
+// Internal or terminal events: the tool result carries the outcome, handoff payloads never leave the server.
+const SILENT_EVENTS = new Set<WorkflowEvent["type"]>(["heartbeat", "handoff_created", "input_checked", "workflow_completed", "workflow_failed"]);
+
 function progressLabel(event: WorkflowEvent): string | null {
+  if (SILENT_EVENTS.has(event.type)) return null;
   const agent = AGENT_LABELS[event.agent_id ?? ""] ?? "Agent";
   if (event.type === "agent_started") return `${agent} started`;
   if (event.type === "agent_completed") return `${agent} completed`;
   if (event.type === "agent_skipped") return `${agent} skipped`;
-  if (event.type.startsWith("payment_") || event.type.startsWith("mandate_")) return PAYMENT_LABELS[event.type] ?? event.type.replace(/_/g, " ");
-  return null;
+  if (event.type === "agent_failed") return `${agent} failed`;
+  return PAYMENT_LABELS[event.type] ?? EVENT_LABELS[event.type] ?? event.type.replace(/_/g, " ");
 }
 
 function collector(progress?: ProgressFn) {
@@ -39,7 +48,8 @@ function collector(progress?: ProgressFn) {
   const emit = (event: WorkflowEvent) => {
     events.push(event);
     const label = progress ? progressLabel(event) : null;
-    if (label) try { progress!(label); } catch { /* best effort */ }
+    // Only the public step fields (already exposed in `steps`); never payloads.
+    if (label) try { progress!(label, { seq: event.seq, type: event.type, step_id: event.step_id, agent_id: event.agent_id }); } catch { /* best effort */ }
   };
   return { events, emit };
 }
@@ -74,7 +84,7 @@ export async function runStandardForMcp(args: { message: string; agentName?: str
     channel: "mcp", scenario: "standard", caller, run_id: card?.run_id ?? events[0]?.run_id ?? null,
     outcome: card?.outcome ?? "failed", department: card?.department ?? null, priority: card?.priority ?? null, summary: card?.summary ?? null,
     next_action: card?.next_action ?? null, route_explanation: card?.route_explanation ?? null, review_status: card?.review_status ?? null,
-    clarification_question: card?.clarification_question ?? null, failure, steps: steps(events), spending: "none",
+    clarification_question: card?.clarification_question ?? null, failure, steps: steps(events), spending: "none", final_card: card ?? null,
   };
   if (!card) {
     const message = failure?.message ?? "The workflow ended without a result.";
@@ -172,6 +182,7 @@ function buildPaidResult(args: { caller: Record<string, unknown>; runId: string;
     run_id: args.runId, operation_id: args.operationId, replayed: args.replayed,
     outcome: card?.outcome ?? "failed", summary: card?.summary ?? null, review_status: card?.review_status ?? null,
     clarification_question: card?.clarification_question ?? null, failure, legal_consultation: legal, payment, steps: steps(events),
+    final_card: card ?? null,
   };
   const spent = !!find(events, "payment_settled") || !!find(events, "payment_confirmed") || (args.replayed && !!card?.agentic_payment_evidence?.settlement.transaction_signature);
   const lines = [
