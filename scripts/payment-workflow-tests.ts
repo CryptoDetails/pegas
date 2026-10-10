@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { DEPARTMENT_PROFILES } from "../lib/workflow/departments.ts";
 import { validatePaidRouting } from "../lib/workflow/paid-schemas.ts";
 import { buildLegalModelContext } from "../lib/workflow/legal-context.ts";
+import { ensureUsefulAdvisory } from "../lib/workflow/legal-fallback.ts";
 assert.deepEqual(DEPARTMENT_PROFILES.map(x=>x.id),["technical","business","finance"],"standard Department contract must remain unchanged");
 const legal=validatePaidRouting({department:"legal",summary:"NDA review",priority:"medium",confidentiality:"internal",routing_reason:"Contract terms need demo policy review",department_brief:"Review terms",next_action:"Consult Legal",open_questions:[],evidence:[],consultation_request:{service_id:"legal_consultation",question:"Can vendor train on confidential information?",reason:"NDA clause"}},"safe context");assert.equal(legal.ok,true);
 const filtered=validatePaidRouting({department:"finance",summary:"s",priority:"medium",confidentiality:"internal",routing_reason:"r",department_brief:"b",next_action:"n",open_questions:[],evidence:["safe context","500 errors on /v1/charges"],consultation_request:null},"safe context about billing");assert.equal(filtered.ok,true,"non-substring evidence must be filtered, not fail");if(filtered.ok){assert.deepEqual(filtered.value.evidence,["safe context"]);assert.ok(filtered.normalized_fields.includes("filtered_evidence"))}
@@ -21,4 +22,10 @@ assert.match(paid,/const deliveryAuth=signInternalEnvelope/);assert.ok(paid.inde
 const build=fs.readFileSync("app/build/page.tsx","utf8");assert.match(build,/KYA-lite/);
 const smoke=fs.readFileSync("scripts/payment-live-smoke.ts","utf8");assert.match(smoke,/YES_I_ACCEPT_ONE_DEVNET_TEST_PAYMENT/);
 const ui=fs.readFileSync("components/AgenticFinanceTimeline.tsx","utf8");for(const marker of ["Mandate created","402 quote","Authority checked","On-chain confirmed","Mandate consumed","Legal response"])assert.ok(ui.includes(marker));
+const ndaCtx={safe_brief:"Vendor NDA: the vendor may use our shared confidential information to train its AI models and keep it for 5 years.",question:"Should we sign this NDA?",relevant_evidence:[]};
+const emptyAdvisory={verdict:"needs_information" as const,summary:"Need more details.",findings:[],next_action:"Ask for the clause.",open_questions:[]};
+const filled=ensureUsefulAdvisory(emptyAdvisory,ndaCtx);assert.equal(filled.verdict,"human_review_required");assert.deepEqual(filled.findings.map(f=>f.policy_id),["DL-01","DL-02","DL-03"]);assert.match(filled.summary,/^First-pass review: 3 policy issue\(s\) found\. /);assert.equal(filled.next_action,"Ask for the clause.");
+const ownDl01={policy_id:"DL-01" as const,observation:"Model's own training observation.",recommended_action:"Model's own action."};
+const merged=ensureUsefulAdvisory({...emptyAdvisory,verdict:"human_review_required",summary:"The vendor training clause conflicts with the demo data-use policy.",findings:[ownDl01]},ndaCtx);assert.deepEqual(merged.findings.map(f=>f.policy_id),["DL-01","DL-02","DL-03"],"no duplicate DL-01; fallbacks follow model findings");assert.deepEqual(merged.findings[0],ownDl01,"model findings must stay first and unchanged");assert.equal(merged.summary,"The vendor training clause conflicts with the demo data-use policy.");
+const noClause=ensureUsefulAdvisory(emptyAdvisory,{safe_brief:"Please help with a contract",question:"Please help with a contract",relevant_evidence:[]});assert.equal(noClause,emptyAdvisory,"no clause content must leave advisory unchanged");
 console.log("Agentic payment workflow tests passed.");

@@ -30,7 +30,10 @@ const paidSuccess = {
       advisory: {
         verdict: "human_review_required",
         summary: "The clause lets the vendor train AI models on your shared information and keep it for five years, which conflicts with the demo data-use policy. Ask to remove training rights and shorten retention.",
-        findings: [], next_action: "Escalate to counsel.", open_questions: [],
+        findings: [
+          { policy_id: "DL-01", observation: "The clause allows the vendor to use shared information for AI model training.", recommended_action: "Require explicit written opt-in before any AI training use, or remove the training right." },
+          { policy_id: "DL-02", observation: "The clause keeps shared information for five years with no deletion duty.", recommended_action: "Add a duty to delete or return all shared information within 30 days after termination, with written confirmation." },
+        ], next_action: "Escalate to counsel.", open_questions: [],
       },
       disclaimer: "Demo policy assessment. Not legal advice or approval to sign.",
     },

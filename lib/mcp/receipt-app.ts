@@ -179,6 +179,9 @@ function paidView(s, isError) {
     const verdict = VERDICTS[legal.advisory.verdict] || cap(legal.advisory.verdict);
     const v = h("span", {}, h("b", {}, verdict), " ", firstSentence(legal.advisory.summary) || "");
     items.push(["Legal verdict", v, "clamp3"]);
+    const asks = (Array.isArray(legal.advisory.findings) ? legal.advisory.findings : [])
+      .map((f) => f && typeof f.recommended_action === "string" ? f.recommended_action.trim() : "").filter(Boolean).slice(0, 2);
+    if (asks.length) items.push(["Ask to change", h("ul", { class: "asks" }, asks.map((a) => h("li", {}, a)))]);
   } else if (!failed && card && card.clarification_question) items.push(["Question", card.clarification_question, "clamp"]);
   kids.push(rows(items));
   if (payment) kids.push(policyChecks(card));
@@ -360,6 +363,7 @@ dd { margin: 0; color: var(--color-text-primary); overflow-wrap: anywhere; }
 dd b { font-weight: var(--font-weight-semibold); }
 .clamp, .clamp3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .clamp3 { -webkit-line-clamp: 3; }
+.asks { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; }
 .checks { border-bottom: var(--border-width-regular) solid var(--color-border-tertiary); margin-top: -14px; }
 .checks summary {
   display: flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; list-style: none;

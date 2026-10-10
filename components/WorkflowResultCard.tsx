@@ -52,6 +52,10 @@ export function WorkflowResultCard({ card }: { card: FinalRequestCard }) {
             {card.legal_consultation ? <>
               <p className="font-semibold">{card.legal_consultation.advisory.verdict.replaceAll("_", " ")}</p>
               <p className="mt-2">{card.legal_consultation.advisory.summary}</p>
+              {card.legal_consultation.advisory.findings.length > 0 && <>
+                <p className="mt-3 font-semibold">Ask to change</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">{card.legal_consultation.advisory.findings.slice(0, 3).map((finding, index) => <li key={`${finding.policy_id}-${index}`}>{finding.recommended_action}</li>)}</ul>
+              </>}
               <p className="mt-3 text-[11px] font-semibold text-amber-700">{card.legal_consultation.disclaimer}</p>
             </> : <><p>No Legal advisory was delivered.</p><p className="mt-3 text-[11px] font-semibold text-amber-700">Demo policy assessment. Not legal advice or approval to sign.</p></>}
           </Section>
