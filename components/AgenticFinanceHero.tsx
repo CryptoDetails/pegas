@@ -6,7 +6,7 @@ const PROOF_SIGNALS = [
   "Qwen on Modal",
 ] as const;
 
-export function AgenticFinanceHero({ onRunDemo }: { onRunDemo: () => void }) {
+export function AgenticFinanceHero({ onRunDemo, onRunAgentDemo }: { onRunDemo: () => void; onRunAgentDemo: () => void }) {
   return (
     <section className="relative overflow-hidden border-b border-slate-200 pb-10 pt-3 sm:pb-12 sm:pt-5 lg:pb-14">
       <div className="pointer-events-none absolute right-0 top-0 h-64 w-64 rounded-full bg-indigo-100/70 blur-3xl" />
@@ -29,6 +29,10 @@ export function AgenticFinanceHero({ onRunDemo }: { onRunDemo: () => void }) {
                 {signal}
               </span>
             ))}
+            <span className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50/70 px-2.5 py-0.5 text-[var(--pegas-blue-dark)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--pegas-blue)]" />
+              MCP server
+            </span>
           </div>
         </div>
 
@@ -44,8 +48,15 @@ export function AgenticFinanceHero({ onRunDemo }: { onRunDemo: () => void }) {
           >
             Run the Agentic Finance demo
           </button>
+          <button
+            type="button"
+            onClick={onRunAgentDemo}
+            className="focus-ring mt-2.5 inline-flex w-full items-center justify-center rounded-2xl border border-indigo-200 bg-white px-4 py-3 text-sm font-bold text-[var(--pegas-blue-dark)] transition hover:border-[var(--pegas-blue)] hover:bg-indigo-50/60"
+          >
+            Try it as an AI agent (MCP)
+          </button>
           <p className="mt-3 text-xs leading-5 text-slate-500">
-            Selects the paid Legal scenario and focuses the workspace. Nothing is submitted or paid until you choose <b>Send a request</b>.
+            Selects the paid Legal scenario and focuses the workspace. Nothing is submitted or paid until you choose Send. The second button lets a built-in AI agent call Pegas over MCP instead of the web form.
           </p>
         </aside>
       </div>

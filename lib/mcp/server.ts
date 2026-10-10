@@ -1,5 +1,6 @@
 import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { RECEIPT_HTML, RECEIPT_MIME_TYPE, RECEIPT_RESOURCE_META, RECEIPT_TOOL_META, RECEIPT_URI } from "./receipt-app";
 import { readPaymentEvidenceForMcp, runPaidLegalForMcp, runStandardForMcp, type ProgressFn } from "./run";
 
 export const MCP_SERVER_INFO = { name: "pegas", title: "Pegas", version: "0.3.0" };
@@ -25,9 +26,17 @@ function progressFor(ctx: ServerContext): ProgressFn | undefined {
 }
 
 const message = z.string().trim().min(1).max(4000).describe("The request for Pegas, in plain language. No secrets or personal data.");
-const agentName = z.string().optional().describe("Optional display name of the calling agent. Self-declared and not verified; shown only in the response.");
+const agentName = z.string().optional().describe('Name of the calling assistant or product, for example "Claude" or "Cursor". Self-declared and not verified; shown in the Pegas receipt.');
 
 export function registerPegasTools(server: McpServer) {
+  // MCP Apps hosts render this card for the two workflow tools; text-only clients ignore it.
+  server.registerResource(
+    "Pegas receipt",
+    RECEIPT_URI,
+    { title: "Pegas receipt", description: "Inline receipt card for Pegas tool results.", mimeType: RECEIPT_MIME_TYPE, _meta: RECEIPT_RESOURCE_META },
+    async () => ({ contents: [{ uri: RECEIPT_URI, mimeType: RECEIPT_MIME_TYPE, text: RECEIPT_HTML, _meta: RECEIPT_RESOURCE_META }] }),
+  );
+
   server.registerTool(
     "submit_request",
     {
@@ -35,6 +44,7 @@ export function registerPegasTools(server: McpServer) {
       description: "Run the free standard Pegas workflow (Intake, Privacy, Routing, Reviewer) and get a routed request card. Spends nothing.",
       inputSchema: z.object({ message, agent_name: agentName }),
       annotations: { title: "Submit a request to Pegas Request Desk", readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      _meta: RECEIPT_TOOL_META,
     },
     async ({ message, agent_name }, ctx) => runStandardForMcp({ message, agentName: agent_name, signal: ctx.mcpReq.signal, progress: progressFor(ctx) }),
   );
@@ -50,6 +60,7 @@ export function registerPegasTools(server: McpServer) {
         request_id: z.string().min(8).max(128).optional().describe("Optional idempotency key. Reusing it with the same message replays the stored result without a new payment."),
       }),
       annotations: { title: "Buy one Legal consultation (0.01 test USDC, Solana Devnet)", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      _meta: RECEIPT_TOOL_META,
     },
     async ({ message, agent_name, request_id }, ctx) => runPaidLegalForMcp({ message, agentName: agent_name, requestId: request_id, signal: ctx.mcpReq.signal, progress: progressFor(ctx) }),
   );

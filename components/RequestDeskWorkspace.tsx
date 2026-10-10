@@ -6,6 +6,7 @@ import { AgenticFinanceHero } from "./AgenticFinanceHero";
 import { AgenticFinanceTimeline } from "./AgenticFinanceTimeline";
 import { AgenticPaymentInspector } from "./AgenticPaymentInspector";
 import { AppHeader } from "./AppHeader";
+import { ConnectAgentSection } from "./ConnectAgentSection";
 import { HandoffInspector } from "./HandoffInspector";
 import { McpAgentPanel, type Delegation, type TranscriptEntry } from "./McpAgentPanel";
 import { ModelRuntimeControl } from "./ModelRuntimeControl";
@@ -188,6 +189,12 @@ export function RequestDeskWorkspace() {
     requestAnimationFrame(() => demoFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }
 
+  function focusAgentDemo() {
+    if (busy) return;
+    setChannel("mcp");
+    focusAgenticFinanceDemo();
+  }
+
   function resetRun() {
     seenIds.current.clear();
     setStates(initialStates);
@@ -325,7 +332,7 @@ export function RequestDeskWorkspace() {
     <div className="min-h-screen">
       <AppHeader active="demo" />
       <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
-        <AgenticFinanceHero onRunDemo={focusAgenticFinanceDemo} />
+        <AgenticFinanceHero onRunDemo={focusAgenticFinanceDemo} onRunAgentDemo={focusAgentDemo} />
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start xl:grid-cols-[380px_minmax(0,1fr)]">
           <section className="min-w-0" aria-label="Request demo">
@@ -334,6 +341,9 @@ export function RequestDeskWorkspace() {
                 <Mode active={!agentMode} onClick={() => switchChannel("web")}>Web form</Mode>
                 <Mode active={agentMode} onClick={() => switchChannel("mcp")}>AI agent via MCP</Mode>
               </div>
+              {!agentMode && (
+                <p className="mt-2.5 px-1 text-xs leading-5 text-slate-500">New: switch to &quot;AI agent via MCP&quot; to watch an external AI agent hire Pegas.</p>
+              )}
               {agentMode && (
                 <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700">
                   <p>A built-in MCP client in your browser plays an external AI agent. It discovers Pegas tools and calls them over the Model Context Protocol, the way Claude or Cursor would. It gets a tool, not payment authority.</p>
@@ -403,6 +413,8 @@ export function RequestDeskWorkspace() {
             )}
           </div>
         </div>
+
+        <ConnectAgentSection />
 
         <div className="mt-10 border-t border-slate-200 pt-7 text-center">
           <Link href="/vision" className="focus-ring inline-flex rounded-lg text-sm font-semibold text-[var(--pegas-blue-dark)] hover:text-indigo-700">
