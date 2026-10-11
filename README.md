@@ -257,6 +257,14 @@ The [blog](https://pegas-rouge.vercel.app/blog) tells how Pegas was built, inclu
 
 ---
 
+## Related project: Smart Wallet Demo
+
+Pegas shows agents that pay. The [Smart Wallet Demo](https://alchemy-smart-wallet-demo.vercel.app) shows the user side of the same idea: email login, a smart wallet with EIP-7702, and transactions where the app pays the gas. It is built on Alchemy Wallet APIs and Privy, on Arbitrum Sepolia.
+
+The main result of that project is not the site. It is a [friction log](https://github.com/CryptoDetails/alchemy-smart-wallet-demo/blob/main/FRICTION_LOG.md) of 14 real problems on the way from an empty folder to a sponsored transaction, and a [troubleshooting runbook](https://github.com/CryptoDetails/alchemy-smart-wallet-demo/blob/main/TROUBLESHOOTING.md) for a support team.
+
+---
+
 ## Author
 
 Built by **Leonid Khatskevych**, product owner. Architecture, decisions and review are human-led, and the code was written with AI coding agents.
